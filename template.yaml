@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Billing API on Lambda, in front of an HTTP API.
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: SQLAlchemy URL for the RDS Postgres instance.
+  JwtSecret:
+    Type: String
+    NoEcho: true
+    Default: dev-only-change-me-before-production
+  CorsOrigins:
+    Type: String
+    Default: http://localhost:5173,http://localhost:5174,http://localhost:3000
+
+Globals:
+  Function:
+    Timeout: 29
+    MemorySize: 512
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+
+Resources:
+  BillingHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+
+  BillingApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: billing-api
+      CodeUri: backend/
+      Handler: app.lambda_handler.handler
+      Environment:
+        Variables:
+          DATABASE_URL: !Ref DatabaseUrl
+          JWT_SECRET: !Ref JwtSecret
+          CORS_ORIGINS: !Ref CorsOrigins
+          EXPOSE_DEV_TOKENS: "false"
+          UPLOAD_DIR: /tmp/uploads
+      Events:
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BillingHttpApi
+            Method: ANY
+            Path: /
+        Proxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BillingHttpApi
+            Method: ANY
+            Path: /{proxy+}
+
+Outputs:
+  ApiUrl:
+    Description: HTTP API base URL
+    Value: !Sub "https://${BillingHttpApi}.execute-api.${AWS::Region}.amazonaws.com"

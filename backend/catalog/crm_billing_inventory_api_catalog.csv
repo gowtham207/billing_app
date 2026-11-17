@@ -1,0 +1,324 @@
+﻿Module,Method,Endpoint,Purpose,Priority
+Authentication,POST,/api/v1/auth/register,Register a user,Core
+Authentication,POST,/api/v1/auth/login,Authenticate with email and password,Core
+Authentication,POST,/api/v1/auth/logout,Log out / revoke refresh token,Core
+Authentication,POST,/api/v1/auth/refresh,Refresh access token,Core
+Authentication,POST,/api/v1/auth/forgot-password,Request password reset,Core
+Authentication,POST,/api/v1/auth/reset-password,Reset password,Core
+Authentication,POST,/api/v1/auth/change-password,Change password,Core
+Authentication,GET,/api/v1/auth/me,Get current user profile,Core
+Authentication,PUT,/api/v1/auth/profile,Update current user profile,Core
+Authentication,POST,/api/v1/auth/verify-email,Verify email address,Core
+Authentication,POST,/api/v1/auth/resend-verification,Resend email verification,Core
+Authentication,GET,/api/v1/auth/sessions,List active sessions,Core
+Authentication,DELETE,/api/v1/auth/sessions/{id},Revoke a session,Core
+Authentication,GET,/api/v1/auth/organizations,List organizations accessible to current user,Core
+Authentication,POST,/api/v1/auth/switch-organization,Switch active organization,Core
+Organizations & Branches,POST,/api/v1/organizations/,Create organization,Core
+Organizations & Branches,GET,/api/v1/organizations/,List organizations (admin scope),Core
+Organizations & Branches,GET,/api/v1/organizations/{id},Get organization details,Core
+Organizations & Branches,PUT,/api/v1/organizations/{id},Update organization,Core
+Organizations & Branches,PATCH,/api/v1/organizations/{id}/status,Change organization status,Core
+Organizations & Branches,DELETE,/api/v1/organizations/{id},Delete organization when permitted,Core
+Organizations & Branches,GET,/api/v1/organizations/{id}/branches,List organization branches,Core
+Organizations & Branches,POST,/api/v1/organizations/{id}/branches,Create branch,Core
+Organizations & Branches,PUT,/api/v1/organizations/branches/{branch_id},Update branch,Core
+Organizations & Branches,DELETE,/api/v1/organizations/branches/{branch_id},Delete branch,Core
+Organizations & Branches,GET,/api/v1/organizations/{id}/addresses,List organization addresses,Core
+Organizations & Branches,POST,/api/v1/organizations/{id}/addresses,Add organization address,Core
+Organizations & Branches,PUT,/api/v1/organizations/addresses/{address_id},Update organization address,Core
+Organizations & Branches,DELETE,/api/v1/organizations/addresses/{address_id},Delete organization address,Core
+Subscriptions,GET,/api/v1/subscriptions/plans,List subscription plans,Core
+Subscriptions,POST,/api/v1/subscriptions/plans,Create subscription plan,Core
+Subscriptions,PUT,/api/v1/subscriptions/plans/{id},Update subscription plan,Core
+Subscriptions,GET,/api/v1/subscriptions/modules,List application modules,Core
+Subscriptions,POST,/api/v1/subscriptions/plans/{id}/modules,Assign modules to subscription plan,Core
+Subscriptions,GET,/api/v1/subscriptions/organization/{org_id},Get organization subscription,Core
+Subscriptions,POST,/api/v1/subscriptions/organization/{org_id},Create organization subscription,Core
+Subscriptions,PUT,/api/v1/subscriptions/{id},Update subscription,Core
+Subscriptions,PATCH,/api/v1/subscriptions/{id}/status,"Activate, suspend or cancel subscription",Core
+Subscriptions,GET,/api/v1/subscriptions/{id}/payments,List subscription payments,Core
+Subscriptions,POST,/api/v1/subscriptions/{id}/payments,Record subscription payment,Core
+Subscriptions,GET,/api/v1/subscriptions/organization/{org_id}/entitlements,Get enabled modules for organization,Core
+Subscriptions,PUT,/api/v1/subscriptions/organization/{org_id}/module-overrides,Override organization module access,Core
+Access Control,GET,/api/v1/access/members,List organization members,Core
+Access Control,POST,/api/v1/access/members/invite,Invite organization member,Core
+Access Control,GET,/api/v1/access/members/{id},Get member details,Core
+Access Control,PUT,/api/v1/access/members/{id},Update member,Core
+Access Control,PATCH,/api/v1/access/members/{id}/status,Enable or disable member,Core
+Access Control,DELETE,/api/v1/access/members/{id},Remove member,Core
+Access Control,GET,/api/v1/access/roles,List roles,Core
+Access Control,POST,/api/v1/access/roles,Create role,Core
+Access Control,PUT,/api/v1/access/roles/{id},Update role,Core
+Access Control,DELETE,/api/v1/access/roles/{id},Delete role,Core
+Access Control,GET,/api/v1/access/permissions,List permissions,Core
+Access Control,PUT,/api/v1/access/roles/{id}/permissions,Assign permissions to role,Core
+Access Control,PUT,/api/v1/access/members/{id}/roles,Assign roles to member,Core
+Access Control,GET,/api/v1/access/members/{id}/permissions,Get member effective permissions,Core
+Access Control,GET,/api/v1/access/members/{id}/branches,List member branch assignments,Core
+Access Control,PUT,/api/v1/access/members/{id}/branches,Assign branches to member,Core
+Workflows & Statuses,GET,/api/v1/workflows/status-groups,List status groups,Core
+Workflows & Statuses,POST,/api/v1/workflows/status-groups,Create status group,Core
+Workflows & Statuses,GET,/api/v1/workflows/statuses,List status definitions,Core
+Workflows & Statuses,POST,/api/v1/workflows/statuses,Create status,Core
+Workflows & Statuses,PUT,/api/v1/workflows/statuses/{id},Update status,Core
+Workflows & Statuses,DELETE,/api/v1/workflows/statuses/{id},Delete unused status,Core
+Workflows & Statuses,GET,/api/v1/workflows/transitions,List allowed status transitions,Core
+Workflows & Statuses,POST,/api/v1/workflows/transitions,Configure status transition,Core
+Workflows & Statuses,GET,/api/v1/workflows/definitions,List workflow definitions,Core
+Workflows & Statuses,POST,/api/v1/workflows/definitions,Create workflow,Core
+Workflows & Statuses,PUT,/api/v1/workflows/definitions/{id},Update workflow,Core
+Workflows & Statuses,GET,/api/v1/workflows/definitions/{id}/steps,List workflow steps,Core
+Workflows & Statuses,PUT,/api/v1/workflows/definitions/{id}/steps,Configure workflow steps,Core
+Workflows & Statuses,POST,/api/v1/workflows/transition,Change entity status using validated transition,Core
+Workflows & Statuses,GET,/api/v1/workflows/history,Get status change history,Core
+CRM - Customers,GET,/api/v1/crm/customers,List customers,Core
+CRM - Customers,POST,/api/v1/crm/customers,Create customer,Core
+CRM - Customers,GET,/api/v1/crm/customers/{id},Get customer details,Core
+CRM - Customers,PUT,/api/v1/crm/customers/{id},Update customer,Core
+CRM - Customers,DELETE,/api/v1/crm/customers/{id},Delete or deactivate customer,Core
+CRM - Customers,GET,/api/v1/crm/customers/{id}/contacts,List customer contacts,Core
+CRM - Customers,POST,/api/v1/crm/customers/{id}/contacts,Add customer contact,Core
+CRM - Customers,PUT,/api/v1/crm/customers/{id}/contacts/{contact_id},Update customer contact,Core
+CRM - Customers,DELETE,/api/v1/crm/customers/{id}/contacts/{contact_id},Remove customer contact,Core
+CRM - Customers,GET,/api/v1/crm/customers/{id}/addresses,List customer addresses,Core
+CRM - Customers,POST,/api/v1/crm/customers/{id}/addresses,Add customer address,Core
+CRM - Customers,PUT,/api/v1/crm/customers/{id}/addresses/{address_id},Update customer address,Core
+CRM - Customers,GET,/api/v1/crm/customers/{id}/notes,List customer notes,Core
+CRM - Customers,POST,/api/v1/crm/customers/{id}/notes,Add customer note,Core
+CRM - Customers,GET,/api/v1/crm/customers/{id}/tags,List customer tags,Core
+CRM - Customers,PUT,/api/v1/crm/customers/{id}/tags,Assign customer tags,Core
+CRM - Customers,GET,/api/v1/crm/customers/{id}/transactions,Get customer transaction history,Core
+CRM - Leads,GET,/api/v1/crm/leads,List leads,Core
+CRM - Leads,POST,/api/v1/crm/leads,Create lead,Core
+CRM - Leads,GET,/api/v1/crm/leads/{id},Get lead details,Core
+CRM - Leads,PUT,/api/v1/crm/leads/{id},Update lead,Core
+CRM - Leads,DELETE,/api/v1/crm/leads/{id},Delete lead,Core
+CRM - Leads,PATCH,/api/v1/crm/leads/{id}/status,Change lead status,Core
+CRM - Leads,PATCH,/api/v1/crm/leads/{id}/assign,Assign lead to user,Core
+CRM - Leads,POST,/api/v1/crm/leads/{id}/convert,Convert lead into customer,Core
+CRM - Leads,GET,/api/v1/crm/lead-sources,List lead sources,Core
+CRM - Leads,POST,/api/v1/crm/lead-sources,Create lead source,Core
+CRM - Leads,GET,/api/v1/crm/customer-sources,List customer sources,Core
+CRM - Leads,POST,/api/v1/crm/customer-sources,Create customer source,Core
+CRM - Opportunities & Activities,GET,/api/v1/crm/opportunities,List sales opportunities,Core
+CRM - Opportunities & Activities,POST,/api/v1/crm/opportunities,Create opportunity,Core
+CRM - Opportunities & Activities,GET,/api/v1/crm/opportunities/{id},Get opportunity details,Core
+CRM - Opportunities & Activities,PUT,/api/v1/crm/opportunities/{id},Update opportunity,Core
+CRM - Opportunities & Activities,PATCH,/api/v1/crm/opportunities/{id}/stage,Change opportunity stage,Core
+CRM - Opportunities & Activities,DELETE,/api/v1/crm/opportunities/{id},Delete opportunity,Core
+CRM - Opportunities & Activities,GET,/api/v1/crm/activities,List CRM activities,Core
+CRM - Opportunities & Activities,POST,/api/v1/crm/activities,"Create call, meeting, task or note",Core
+CRM - Opportunities & Activities,GET,/api/v1/crm/activities/{id},Get activity details,Core
+CRM - Opportunities & Activities,PUT,/api/v1/crm/activities/{id},Update activity,Core
+CRM - Opportunities & Activities,PATCH,/api/v1/crm/activities/{id}/complete,Complete activity,Core
+CRM - Opportunities & Activities,DELETE,/api/v1/crm/activities/{id},Delete activity,Core
+CRM - Opportunities & Activities,GET,/api/v1/crm/activities/my-tasks,List current user's tasks,Core
+CRM - Opportunities & Activities,GET,/api/v1/crm/activities/upcoming,List upcoming follow-ups,Core
+CRM - Opportunities & Activities,GET,/api/v1/crm/tags,List CRM tags,Core
+CRM - Opportunities & Activities,POST,/api/v1/crm/tags,Create CRM tag,Core
+CRM - Opportunities & Activities,PUT,/api/v1/crm/tags/{id},Update CRM tag,Core
+CRM - Opportunities & Activities,DELETE,/api/v1/crm/tags/{id},Delete CRM tag,Core
+Inventory - Products & Catalog,GET,/api/v1/inventory/products,List products,Core
+Inventory - Products & Catalog,POST,/api/v1/inventory/products,Create product,Core
+Inventory - Products & Catalog,GET,/api/v1/inventory/products/{id},Get product details,Core
+Inventory - Products & Catalog,PUT,/api/v1/inventory/products/{id},Update product,Core
+Inventory - Products & Catalog,DELETE,/api/v1/inventory/products/{id},Deactivate or delete product,Core
+Inventory - Products & Catalog,GET,/api/v1/inventory/products/{id}/variants,List product variants,Core
+Inventory - Products & Catalog,POST,/api/v1/inventory/products/{id}/variants,Create product variant,Core
+Inventory - Products & Catalog,PUT,/api/v1/inventory/variants/{id},Update product variant,Core
+Inventory - Products & Catalog,DELETE,/api/v1/inventory/variants/{id},Delete product variant,Core
+Inventory - Products & Catalog,GET,/api/v1/inventory/categories,List product categories,Core
+Inventory - Products & Catalog,POST,/api/v1/inventory/categories,Create category,Core
+Inventory - Products & Catalog,PUT,/api/v1/inventory/categories/{id},Update category,Core
+Inventory - Products & Catalog,DELETE,/api/v1/inventory/categories/{id},Delete category,Core
+Inventory - Products & Catalog,GET,/api/v1/inventory/brands,List brands,Core
+Inventory - Products & Catalog,POST,/api/v1/inventory/brands,Create brand,Core
+Inventory - Products & Catalog,GET,/api/v1/inventory/units,List units of measurement,Core
+Inventory - Products & Catalog,POST,/api/v1/inventory/units,Create unit,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/warehouses,List warehouses,Core
+Inventory - Warehouses & Stock,POST,/api/v1/inventory/warehouses,Create warehouse,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/warehouses/{id},Get warehouse details,Core
+Inventory - Warehouses & Stock,PUT,/api/v1/inventory/warehouses/{id},Update warehouse,Core
+Inventory - Warehouses & Stock,DELETE,/api/v1/inventory/warehouses/{id},Delete warehouse,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/stock,Get stock overview,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/stock/product/{product_id},Get product stock across warehouses,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/stock/warehouse/{warehouse_id},Get warehouse stock,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/stock/low-stock,List low-stock products,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/stock/movements,List stock movements,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/stock/movements/{id},Get stock movement details,Core
+Inventory - Warehouses & Stock,POST,/api/v1/inventory/stock/opening,Record opening stock,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/adjustments,List stock adjustments,Core
+Inventory - Warehouses & Stock,POST,/api/v1/inventory/adjustments,Create stock adjustment,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/adjustments/{id},Get adjustment details,Core
+Inventory - Warehouses & Stock,PUT,/api/v1/inventory/adjustments/{id},Update draft adjustment,Core
+Inventory - Warehouses & Stock,POST,/api/v1/inventory/adjustments/{id}/submit,Submit adjustment for approval,Core
+Inventory - Warehouses & Stock,POST,/api/v1/inventory/adjustments/{id}/approve,Approve stock adjustment,Core
+Inventory - Warehouses & Stock,POST,/api/v1/inventory/adjustments/{id}/post,Post stock adjustment,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/transfers,List stock transfers,Core
+Inventory - Warehouses & Stock,POST,/api/v1/inventory/transfers,Create stock transfer,Core
+Inventory - Warehouses & Stock,GET,/api/v1/inventory/transfers/{id},Get transfer details,Core
+Inventory - Warehouses & Stock,PUT,/api/v1/inventory/transfers/{id},Update draft transfer,Core
+Inventory - Warehouses & Stock,POST,/api/v1/inventory/transfers/{id}/approve,Approve stock transfer,Core
+Inventory - Warehouses & Stock,POST,/api/v1/inventory/transfers/{id}/complete,Complete stock transfer,Core
+Inventory - Warehouses & Stock,POST,/api/v1/inventory/transfers/{id}/cancel,Cancel stock transfer,Core
+Purchasing,GET,/api/v1/purchases/suppliers,List suppliers,Core
+Purchasing,POST,/api/v1/purchases/suppliers,Create supplier,Core
+Purchasing,GET,/api/v1/purchases/suppliers/{id},Get supplier details,Core
+Purchasing,PUT,/api/v1/purchases/suppliers/{id},Update supplier,Core
+Purchasing,DELETE,/api/v1/purchases/suppliers/{id},Deactivate supplier,Core
+Purchasing,GET,/api/v1/purchases/suppliers/{id}/addresses,List supplier addresses,Core
+Purchasing,POST,/api/v1/purchases/suppliers/{id}/addresses,Add supplier address,Core
+Purchasing,GET,/api/v1/purchases/suppliers/{id}/transactions,Get supplier transaction history,Core
+Purchasing,GET,/api/v1/purchases/orders,List purchase orders,Core
+Purchasing,POST,/api/v1/purchases/orders,Create purchase order,Core
+Purchasing,GET,/api/v1/purchases/orders/{id},Get purchase order details,Core
+Purchasing,PUT,/api/v1/purchases/orders/{id},Update draft purchase order,Core
+Purchasing,POST,/api/v1/purchases/orders/{id}/submit,Submit purchase order,Core
+Purchasing,POST,/api/v1/purchases/orders/{id}/approve,Approve purchase order,Core
+Purchasing,POST,/api/v1/purchases/orders/{id}/cancel,Cancel purchase order,Core
+Purchasing,GET,/api/v1/purchases/goods-receipts,List goods receipts,Core
+Purchasing,POST,/api/v1/purchases/goods-receipts,Create goods receipt,Core
+Purchasing,GET,/api/v1/purchases/goods-receipts/{id},Get goods receipt details,Core
+Purchasing,POST,/api/v1/purchases/goods-receipts/{id}/complete,Complete receipt and update stock,Core
+Purchasing,GET,/api/v1/purchases/invoices,List supplier invoices,Core
+Purchasing,POST,/api/v1/purchases/invoices,Create supplier invoice,Core
+Purchasing,GET,/api/v1/purchases/invoices/{id},Get supplier invoice details,Core
+Purchasing,PUT,/api/v1/purchases/invoices/{id},Update supplier invoice,Core
+Purchasing,POST,/api/v1/purchases/invoices/{id}/post,Post supplier invoice,Core
+Purchasing,GET,/api/v1/purchases/supplier-payments,List supplier payments,Core
+Purchasing,POST,/api/v1/purchases/supplier-payments,Record supplier payment,Core
+Purchasing,POST,/api/v1/purchases/supplier-payments/{id}/allocate,Allocate supplier payment,Core
+Billing - Settings & Masters,GET,/api/v1/billing/settings,Get billing settings,Core
+Billing - Settings & Masters,PUT,/api/v1/billing/settings,Update billing settings,Core
+Billing - Settings & Masters,GET,/api/v1/billing/sequences,List document sequences,Core
+Billing - Settings & Masters,POST,/api/v1/billing/sequences,Create document sequence,Core
+Billing - Settings & Masters,PUT,/api/v1/billing/sequences/{id},Update document sequence,Core
+Billing - Settings & Masters,GET,/api/v1/billing/tax-rates,List tax rates,Core
+Billing - Settings & Masters,POST,/api/v1/billing/tax-rates,Create tax rate,Core
+Billing - Settings & Masters,PUT,/api/v1/billing/tax-rates/{id},Update tax rate,Core
+Billing - Settings & Masters,GET,/api/v1/billing/tax-groups,List tax groups,Core
+Billing - Settings & Masters,POST,/api/v1/billing/tax-groups,Create tax group,Core
+Billing - Settings & Masters,GET,/api/v1/billing/payment-methods,List payment methods,Core
+Billing - Settings & Masters,POST,/api/v1/billing/payment-methods,Create payment method,Core
+Billing - Settings & Masters,GET,/api/v1/billing/invoice-templates,List invoice templates,Core
+Billing - Settings & Masters,POST,/api/v1/billing/invoice-templates,Create invoice template,Core
+Billing - Settings & Masters,PUT,/api/v1/billing/invoice-templates/{id},Update invoice template,Core
+Billing - Quotations & Sales Orders,GET,/api/v1/billing/quotations,List quotations,Core
+Billing - Quotations & Sales Orders,POST,/api/v1/billing/quotations,Create quotation,Core
+Billing - Quotations & Sales Orders,GET,/api/v1/billing/quotations/{id},Get quotation details,Core
+Billing - Quotations & Sales Orders,PUT,/api/v1/billing/quotations/{id},Update quotation,Core
+Billing - Quotations & Sales Orders,POST,/api/v1/billing/quotations/{id}/send,Send quotation,Core
+Billing - Quotations & Sales Orders,POST,/api/v1/billing/quotations/{id}/accept,Accept quotation,Core
+Billing - Quotations & Sales Orders,POST,/api/v1/billing/quotations/{id}/reject,Reject quotation,Core
+Billing - Quotations & Sales Orders,POST,/api/v1/billing/quotations/{id}/convert-to-order,Convert quotation to sales order,Core
+Billing - Quotations & Sales Orders,GET,/api/v1/billing/orders,List sales orders,Core
+Billing - Quotations & Sales Orders,POST,/api/v1/billing/orders,Create sales order,Core
+Billing - Quotations & Sales Orders,GET,/api/v1/billing/orders/{id},Get sales order details,Core
+Billing - Quotations & Sales Orders,PUT,/api/v1/billing/orders/{id},Update draft sales order,Core
+Billing - Quotations & Sales Orders,POST,/api/v1/billing/orders/{id}/confirm,Confirm sales order,Core
+Billing - Quotations & Sales Orders,POST,/api/v1/billing/orders/{id}/cancel,Cancel sales order,Core
+Billing - Quotations & Sales Orders,POST,/api/v1/billing/orders/{id}/convert-to-invoice,Convert sales order to invoice,Core
+Billing - Invoices & Payments,GET,/api/v1/billing/invoices,List sales invoices,Core
+Billing - Invoices & Payments,POST,/api/v1/billing/invoices,Create sales invoice,Core
+Billing - Invoices & Payments,GET,/api/v1/billing/invoices/{id},Get invoice details,Core
+Billing - Invoices & Payments,PUT,/api/v1/billing/invoices/{id},Update draft invoice,Core
+Billing - Invoices & Payments,POST,/api/v1/billing/invoices/{id}/approve,Approve invoice,Core
+Billing - Invoices & Payments,POST,/api/v1/billing/invoices/{id}/post,Post invoice,Core
+Billing - Invoices & Payments,POST,/api/v1/billing/invoices/{id}/cancel,Cancel invoice when permitted,Core
+Billing - Invoices & Payments,GET,/api/v1/billing/invoices/{id}/pdf,Generate or download invoice PDF,Core
+Billing - Invoices & Payments,GET,/api/v1/billing/invoices/{id}/payments,List invoice payments,Core
+Billing - Invoices & Payments,GET,/api/v1/billing/invoices/{id}/outstanding,Get invoice outstanding balance,Core
+Billing - Invoices & Payments,GET,/api/v1/billing/payments,List customer payments,Core
+Billing - Invoices & Payments,POST,/api/v1/billing/payments,Record customer payment,Core
+Billing - Invoices & Payments,GET,/api/v1/billing/payments/{id},Get payment details,Core
+Billing - Invoices & Payments,POST,/api/v1/billing/payments/{id}/allocate,Allocate payment to invoices,Core
+Billing - Invoices & Payments,POST,/api/v1/billing/payments/{id}/refund,Record payment refund,Core
+Billing - Invoices & Payments,GET,/api/v1/billing/customers/{customer_id}/outstanding,Get customer outstanding balance,Core
+Billing - Invoices & Payments,GET,/api/v1/billing/customers/{customer_id}/ledger,Get customer ledger,Core
+Billing - Returns & Credit Notes,GET,/api/v1/billing/returns,List sales returns,Core
+Billing - Returns & Credit Notes,POST,/api/v1/billing/returns,Create sales return,Core
+Billing - Returns & Credit Notes,GET,/api/v1/billing/returns/{id},Get sales return details,Core
+Billing - Returns & Credit Notes,POST,/api/v1/billing/returns/{id}/approve,Approve sales return,Core
+Billing - Returns & Credit Notes,POST,/api/v1/billing/returns/{id}/complete,Complete return and process stock,Core
+Billing - Returns & Credit Notes,GET,/api/v1/billing/credit-notes,List credit notes,Core
+Billing - Returns & Credit Notes,POST,/api/v1/billing/credit-notes,Create credit note,Core
+Billing - Returns & Credit Notes,GET,/api/v1/billing/credit-notes/{id},Get credit note details,Core
+Billing - Returns & Credit Notes,POST,/api/v1/billing/credit-notes/{id}/issue,Issue credit note,Core
+Expenses,GET,/api/v1/expenses/categories,List expense categories,Core
+Expenses,POST,/api/v1/expenses/categories,Create expense category,Core
+Expenses,PUT,/api/v1/expenses/categories/{id},Update expense category,Core
+Expenses,DELETE,/api/v1/expenses/categories/{id},Delete expense category,Core
+Expenses,GET,/api/v1/expenses/,List expenses,Core
+Expenses,POST,/api/v1/expenses/,Create expense,Core
+Expenses,GET,/api/v1/expenses/{id},Get expense details,Core
+Expenses,PUT,/api/v1/expenses/{id},Update expense,Core
+Expenses,POST,/api/v1/expenses/{id}/submit,Submit expense,Core
+Expenses,POST,/api/v1/expenses/{id}/approve,Approve expense,Core
+Expenses,POST,/api/v1/expenses/{id}/reject,Reject expense,Core
+Expenses,POST,/api/v1/expenses/{id}/pay,Record expense payment,Core
+Dashboard,GET,/api/v1/dashboard/overview,Get overall business summary,Core
+Dashboard,GET,/api/v1/dashboard/sales-summary,Get sales summary,Core
+Dashboard,GET,/api/v1/dashboard/purchase-summary,Get purchase summary,Core
+Dashboard,GET,/api/v1/dashboard/revenue-summary,Get revenue summary,Core
+Dashboard,GET,/api/v1/dashboard/profit-summary,Get profit summary,Core
+Dashboard,GET,/api/v1/dashboard/expense-summary,Get expense summary,Core
+Dashboard,GET,/api/v1/dashboard/customer-summary,Get customer statistics,Core
+Dashboard,GET,/api/v1/dashboard/lead-summary,Get lead statistics,Core
+Dashboard,GET,/api/v1/dashboard/inventory-summary,Get inventory statistics,Core
+Dashboard,GET,/api/v1/dashboard/low-stock,Get low-stock products,Core
+Dashboard,GET,/api/v1/dashboard/top-selling-products,Get best-selling products,Core
+Dashboard,GET,/api/v1/dashboard/top-customers,Get highest-value customers,Core
+Dashboard,GET,/api/v1/dashboard/recent-invoices,Get recent invoices,Core
+Dashboard,GET,/api/v1/dashboard/recent-payments,Get recent payments,Core
+Dashboard,GET,/api/v1/dashboard/outstanding-payments,Get unpaid invoice summary,Core
+Dashboard,GET,/api/v1/dashboard/sales-chart,Get sales chart data,Core
+Dashboard,GET,/api/v1/dashboard/purchase-chart,Get purchase chart data,Core
+Dashboard,GET,/api/v1/dashboard/cash-flow,Get cash inflow and outflow,Core
+Dashboard,GET,/api/v1/dashboard/activity-feed,Get recent business activities,Core
+Dashboard Builder,GET,/api/v1/dashboards/,List dashboards,Core
+Dashboard Builder,POST,/api/v1/dashboards/,Create dashboard,Core
+Dashboard Builder,GET,/api/v1/dashboards/{id},Get dashboard details,Core
+Dashboard Builder,PUT,/api/v1/dashboards/{id},Update dashboard,Core
+Dashboard Builder,DELETE,/api/v1/dashboards/{id},Delete dashboard,Core
+Dashboard Builder,POST,/api/v1/dashboards/{id}/set-default,Set default dashboard,Core
+Dashboard Builder,GET,/api/v1/dashboards/{id}/widgets,List dashboard widgets,Core
+Dashboard Builder,POST,/api/v1/dashboards/{id}/widgets,Add dashboard widget,Core
+Dashboard Builder,PUT,/api/v1/dashboards/widgets/{widget_id},Update dashboard widget,Core
+Dashboard Builder,DELETE,/api/v1/dashboards/widgets/{widget_id},Delete dashboard widget,Core
+Dashboard Builder,PUT,/api/v1/dashboards/{id}/layout,Save dashboard widget layout,Core
+Reports & Analytics,GET,/api/v1/reports/definitions,List report definitions,Core
+Reports & Analytics,POST,/api/v1/reports/definitions,Create report definition,Core
+Reports & Analytics,GET,/api/v1/reports/definitions/{id},Get report definition,Core
+Reports & Analytics,PUT,/api/v1/reports/definitions/{id},Update report definition,Core
+Reports & Analytics,POST,/api/v1/reports/execute,Execute a report,Core
+Reports & Analytics,GET,/api/v1/reports/sales,Get sales report,Core
+Reports & Analytics,GET,/api/v1/reports/purchases,Get purchase report,Core
+Reports & Analytics,GET,/api/v1/reports/inventory,Get inventory report,Core
+Reports & Analytics,GET,/api/v1/reports/stock-movement,Get stock movement report,Core
+Reports & Analytics,GET,/api/v1/reports/customer-ledger,Get customer ledger report,Core
+Reports & Analytics,GET,/api/v1/reports/supplier-ledger,Get supplier ledger report,Core
+Reports & Analytics,GET,/api/v1/reports/outstanding,Get outstanding report,Core
+Reports & Analytics,GET,/api/v1/reports/expenses,Get expenses report,Core
+Reports & Analytics,GET,/api/v1/reports/tax,Get tax report,Core
+Reports & Analytics,GET,/api/v1/reports/profit-loss,Get profit and loss report,Core
+Reports & Analytics,GET,/api/v1/reports/kpis,List KPI definitions,Core
+Reports & Analytics,POST,/api/v1/reports/saved,Save report and filters,Core
+Reports & Analytics,GET,/api/v1/reports/saved,List saved reports,Core
+Reports & Analytics,GET,/api/v1/reports/saved/{id},Get saved report,Core
+Reports & Analytics,DELETE,/api/v1/reports/saved/{id},Delete saved report,Core
+Reports & Analytics,POST,/api/v1/reports/schedules,Schedule report,Core
+Reports & Analytics,GET,/api/v1/reports/schedules,List report schedules,Core
+Reports & Analytics,PUT,/api/v1/reports/schedules/{id},Update report schedule,Core
+Reports & Analytics,DELETE,/api/v1/reports/schedules/{id},Delete report schedule,Core
+Reports & Analytics,GET,/api/v1/reports/export,"Export report as PDF, Excel or CSV",Core
+"Common - Audit, Attachments, Notifications & Settings",GET,/api/v1/audit-logs,List audit history,Supporting
+"Common - Audit, Attachments, Notifications & Settings",GET,/api/v1/attachments,List attachments,Supporting
+"Common - Audit, Attachments, Notifications & Settings",POST,/api/v1/attachments,Upload attachment,Supporting
+"Common - Audit, Attachments, Notifications & Settings",GET,/api/v1/attachments/{id},Get attachment details,Supporting
+"Common - Audit, Attachments, Notifications & Settings",GET,/api/v1/attachments/{id}/download,Download attachment,Supporting
+"Common - Audit, Attachments, Notifications & Settings",DELETE,/api/v1/attachments/{id},Delete attachment,Supporting
+"Common - Audit, Attachments, Notifications & Settings",GET,/api/v1/notifications,List notifications,Supporting
+"Common - Audit, Attachments, Notifications & Settings",PATCH,/api/v1/notifications/{id}/read,Mark notification as read,Supporting
+"Common - Audit, Attachments, Notifications & Settings",GET,/api/v1/settings,Get organization settings,Supporting
+"Common - Audit, Attachments, Notifications & Settings",PUT,/api/v1/settings,Update organization settings,Supporting

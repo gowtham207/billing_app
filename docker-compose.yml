@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: billing_app
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/ddl.sql:/docker-entrypoint-initdb.d/01_ddl.sql:ro
+      - ./database/app_extras.sql:/docker-entrypoint-initdb.d/02_extras.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d billing_app"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://billing_app:billing_app@db:5432/billing_app
+      MIGRATION_DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/billing_app
+      SQL_DIR: /database
+      JWT_SECRET: dev-only-change-me-before-production
+      EXPOSE_DEV_TOKENS: "true"
+      UPLOAD_DIR: /data/uploads
+      CORS_ORIGINS: http://localhost:5173,http://localhost:5174,http://localhost:3000
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  uploads:
