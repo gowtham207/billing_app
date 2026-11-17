@@ -14,6 +14,7 @@ import { organizationService } from '@/services/organization.service'
 import type { BillingSnapshot, GstLine, Invoice, PartyAddress } from '@/types/api'
 import { readExtras } from '@/features/billing/extras'
 import { downloadInvoicePdf } from '@/features/billing/pdf/invoicePdf'
+import { buildTaxInvoice, TaxInvoiceSheet, type TaxInvoiceLine } from '@/features/billing/TaxInvoiceSheet'
 import { paiseFields, previewGst } from '@/utils/gst'
 import { formatInr, fromPaise, toPaise } from '@/utils/money'
 import { upiPayUri } from '@/utils/upi'
@@ -408,9 +409,31 @@ export function InvoiceEditorPage() {
           {actions}
         </aside>
       </div>
-      <Modal title="Invoice preview" open={preview} onClose={() => setPreview(false)}>
-        <InvoicePreview from={from} to={to} billTo={billTo} lines={computed.map((row) => row.money)} descriptions={lines.map((line) => line.description)} grand={fromPaise(grand)} />
-        <div className="mt-4 flex justify-end"><Button variant="secondary" onClick={() => setPreview(false)}>Close preview</Button></div>
+      <Modal title="Invoice preview" wide open={preview} onClose={() => setPreview(false)}>
+        <TaxInvoiceSheet invoice={buildTaxInvoice({
+          businessName: from.name,
+          phone: from.phone,
+          email: from.email,
+          invoiceNo: existing.data?.invoice_no || 'Draft',
+          invoiceDate,
+          billToName: billTo.name || to.name,
+          notes,
+          shipping,
+          lines: computed.map((row): TaxInvoiceLine => ({
+            description: row.line.description,
+            sku: row.line.sku,
+            hsn: row.line.hsn,
+            quantity: row.line.quantity,
+            unit: row.line.unit,
+            unitPrice: row.line.unit_price,
+            discount: row.line.discount,
+            gstRate: row.line.exempt ? 0 : row.line.gst_rate,
+            cgst: row.money.cgst,
+            sgst: row.money.sgst,
+            igst: row.money.igst,
+            total: row.money.total,
+          })),
+        })} />
       </Modal>
     </div>
   )
@@ -459,37 +482,6 @@ function PartyCard({ title, party, onChange, extra }: { title: string; party: Pa
   )
 }
 
-function InvoicePreview({ from, to, billTo, lines, descriptions, grand }: { from: PartyAddress; to: PartyAddress; billTo: PartyAddress; lines: { taxable: string; cgst: string; sgst: string; igst: string; total: string }[]; descriptions: string[]; grand: string }) {
-  const partyLine = (party: PartyAddress) => [party.name, party.line1, party.state, party.postal_code].filter(Boolean).join(', ') || 'Not set'
-  return (
-    <div className="space-y-4 text-sm">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div><p className="text-xs font-semibold tracking-wide text-muted uppercase">From</p><p className="mt-1">{partyLine(from)}</p></div>
-        <div><p className="text-xs font-semibold tracking-wide text-muted uppercase">Ship to</p><p className="mt-1">{partyLine(to)}</p></div>
-        <div><p className="text-xs font-semibold tracking-wide text-muted uppercase">Bill to</p><p className="mt-1">{partyLine(billTo)}</p></div>
-      </div>
-      <div className="data-table">
-        <table className="min-w-full text-left text-sm">
-          <thead><tr>{['Description', 'Taxable', 'CGST', 'SGST', 'IGST', 'Total'].map((heading) => <th key={heading} className="px-3 py-2 font-medium">{heading}</th>)}</tr></thead>
-          <tbody>
-            {lines.length === 0 ? <tr><td className="px-3 py-4 text-muted" colSpan={6}>No line items yet.</td></tr> : lines.map((line, index) => (
-              <tr key={index} className="border-t border-line">
-                <td className="px-3 py-2">{descriptions[index] || 'Untitled line'}</td>
-                <td className="px-3 py-2 tabular-nums">{formatInr(line.taxable)}</td>
-                <td className="px-3 py-2 tabular-nums">{formatInr(line.cgst)}</td>
-                <td className="px-3 py-2 tabular-nums">{formatInr(line.sgst)}</td>
-                <td className="px-3 py-2 tabular-nums">{formatInr(line.igst)}</td>
-                <td className="px-3 py-2 font-medium tabular-nums">{formatInr(line.total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-right text-base font-semibold">Grand total {formatInr(grand)}</p>
-    </div>
-  )
-}
-
 export function InvoiceDetailPage() {
   const { id = '' } = useParams()
   const session = useSession()
@@ -510,7 +502,7 @@ export function InvoiceDetailPage() {
     <div className="space-y-4">
       <PageHeader title={data.invoice_no} subtitle={`${data.invoice_date} · Balance ${formatInr(data.balance_due)}`}>
         {session.can('invoices.create') && !data.issued_at ? <Link to={`/billing/invoices/${data.id}/edit`}><Button variant="secondary">Edit draft</Button></Link> : null}
-        <Button variant="secondary" onClick={() => downloadInvoicePdf(data, snapshot, extras?.logoDataUrl).catch((error) => toast(apiError(error), 'error'))}>Download PDF</Button>
+        <Button variant="secondary" onClick={() => downloadInvoicePdf(data, snapshot).catch((error) => toast(apiError(error), 'error'))}>Download PDF</Button>
         <Button variant="secondary" onClick={() => invoiceService.pdfBlob(data.id).then((blob) => window.open(URL.createObjectURL(blob))).catch((error) => toast(apiError(error), 'error'))}>Server PDF</Button>
         <Button variant="secondary" onClick={() => window.print()}>Print invoice</Button>
         <ShareButton invoice={data} phone={customer.data?.phone} name={customer.data?.display_name} />
@@ -521,16 +513,46 @@ export function InvoiceDetailPage() {
         }}>Generate UPI QR</Button>
         {session.can('invoices.cancel') ? <Button variant="danger" onClick={() => invoiceService.cancel(data.id).then(() => queryClient.invalidateQueries({ queryKey: ['invoice', id] })).catch((error) => toast(apiError(error), 'error'))}>Cancel invoice</Button> : null}
       </PageHeader>
-      <div className="grid gap-4 md:grid-cols-3">
-        <AddressBlock title="From" party={snapshot.from} />
-        <AddressBlock title="To" party={snapshot.to} />
-        <AddressBlock title="Bill to" party={snapshot.bill_to} />
+      <div id="invoice-print">
+        <TaxInvoiceSheet invoice={buildTaxInvoice({
+          businessName: snapshot.from?.name || extras?.merchantName || 'Business',
+          phone: snapshot.from?.phone,
+          email: snapshot.from?.email,
+          invoiceNo: data.invoice_no,
+          invoiceDate: data.invoice_date,
+          billToName: snapshot.bill_to?.name || customer.data?.display_name || 'Customer',
+          notes: data.notes,
+          shipping: data.shipping_amount,
+          received: data.amount_paid,
+          balance: data.balance_due,
+          grandTotal: data.grand_total,
+          lines: snapshot.lines?.length ? snapshot.lines.map((line) => ({
+            description: line.description,
+            sku: line.sku,
+            hsn: line.hsn,
+            quantity: line.quantity,
+            unit: line.unit,
+            unitPrice: line.unit_price,
+            discount: line.discount,
+            gstRate: line.exempt ? 0 : line.gst_rate,
+            cgst: line.cgst,
+            sgst: line.sgst,
+            igst: line.igst,
+            total: line.total,
+          })) : (items.data ?? []).map((item) => ({
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            discount: item.discount_amount,
+            gstRate: 0,
+            cgst: '0',
+            sgst: '0',
+            igst: item.tax_amount,
+            total: item.line_total,
+          })),
+        })} />
       </div>
-      <div className="panel p-4 text-sm">
-        {(items.data ?? []).map((item) => <p key={item.id}>{item.description} · {item.quantity} × {formatInr(item.unit_price)} · tax {formatInr(item.tax_amount)} · {formatInr(item.line_total)}</p>)}
-        <p className="mt-2">Subtotal {formatInr(data.subtotal)} · GST {formatInr(data.tax_total)} · Grand total {formatInr(data.grand_total)} · Paid {formatInr(data.amount_paid)} · Balance {formatInr(data.balance_due)}</p>
-        <p className="text-muted">A QR code does not confirm payment. Record the payment after you reconcile it.</p>
-      </div>
+      <p className="text-sm text-muted">A QR code does not confirm payment. Record the payment after you reconcile it.</p>
       {session.can('payments.create') ? (
         <form className="flex flex-wrap items-end gap-2" onSubmit={async (event) => {
           event.preventDefault()
@@ -555,10 +577,6 @@ export function InvoiceDetailPage() {
       </Modal>
     </div>
   )
-}
-
-function AddressBlock({ title, party }: { title: string; party?: PartyAddress }) {
-  return <section className="panel p-4 text-sm"><h2 className="font-medium">{title}</h2><p>{party?.name || 'Not stored on this invoice'}</p><p>{party?.line1}</p><p>{party?.state} {party?.postal_code}</p><p>{party?.gstin}</p></section>
 }
 
 function ShareButton({ invoice, phone, name }: { invoice: Invoice; phone?: string | null; name?: string | null }) {

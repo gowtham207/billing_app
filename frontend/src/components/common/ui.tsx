@@ -66,11 +66,11 @@ export function SelectField({ label, children, ...props }: SelectHTMLAttributes<
   )
 }
 
-export function Modal({ title, open, onClose, children }: { title: string; open: boolean; onClose: () => void; children: ReactNode }) {
+export function Modal({ title, open, onClose, children, wide = false }: { title: string; open: boolean; onClose: () => void; children: ReactNode; wide?: boolean }) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-navy/40 p-4">
-      <div className="panel my-8 w-full max-w-3xl">
+      <div className={`panel my-8 w-full ${wide ? 'max-w-6xl' : 'max-w-3xl'}`}>
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <h2 className="text-base font-semibold">{title}</h2>
           <button type="button" onClick={onClose} aria-label="Close"><X size={18} /></button>
