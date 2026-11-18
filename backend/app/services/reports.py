@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -17,6 +17,7 @@ from app.models import (
     PurchaseInvoice,
     SalesInvoice,
     SalesInvoiceItem,
+    StatusDefinition,
     StockBalance,
     StockMovement,
     Supplier,
@@ -45,6 +46,14 @@ def _between(stmt, column, date_from, date_to):
     return stmt
 
 
+def not_cancelled(organization_id):
+    cancelled = select(StatusDefinition.id).where(
+        StatusDefinition.organization_id == organization_id,
+        func.lower(StatusDefinition.status_key).in_(("cancelled", "canceled")),
+    )
+    return or_(SalesInvoice.status_id.is_(None), SalesInvoice.status_id.not_in(cancelled))
+
+
 def sales_rows(db: Session, organization_id, date_from=None, date_to=None):
     stmt = select(
         SalesInvoice.invoice_no,
@@ -53,7 +62,7 @@ def sales_rows(db: Session, organization_id, date_from=None, date_to=None):
         SalesInvoice.grand_total,
         SalesInvoice.amount_paid,
         SalesInvoice.balance_due,
-    ).where(SalesInvoice.organization_id == organization_id)
+    ).where(SalesInvoice.organization_id == organization_id, not_cancelled(organization_id))
     return records(db.execute(_between(stmt, SalesInvoice.invoice_date, date_from, date_to).order_by(SalesInvoice.invoice_date.desc())).all())
 
 
@@ -144,7 +153,7 @@ def outstanding_rows(db: Session, organization_id):
     stmt = (
         select(Customer.display_name, func.coalesce(func.sum(SalesInvoice.balance_due), 0).label("outstanding"))
         .join(SalesInvoice, (SalesInvoice.customer_id == Customer.id) & (SalesInvoice.organization_id == Customer.organization_id))
-        .where(Customer.organization_id == organization_id, SalesInvoice.balance_due > 0)
+        .where(Customer.organization_id == organization_id, SalesInvoice.balance_due > 0, not_cancelled(organization_id))
         .group_by(Customer.id)
         .order_by(func.sum(SalesInvoice.balance_due).desc())
     )
@@ -168,7 +177,7 @@ def tax_rows(db: Session, organization_id):
 
 
 def profit_loss(db: Session, organization_id, date_from=None, date_to=None) -> dict:
-    sales = db.scalar(_between(select(func.coalesce(func.sum(SalesInvoice.grand_total), 0)).where(SalesInvoice.organization_id == organization_id), SalesInvoice.invoice_date, date_from, date_to))
+    sales = db.scalar(_between(select(func.coalesce(func.sum(SalesInvoice.grand_total), 0)).where(SalesInvoice.organization_id == organization_id, not_cancelled(organization_id)), SalesInvoice.invoice_date, date_from, date_to))
     purchases = db.scalar(_between(select(func.coalesce(func.sum(PurchaseInvoice.grand_total), 0)).where(PurchaseInvoice.organization_id == organization_id), PurchaseInvoice.invoice_date, date_from, date_to))
     expenses = db.scalar(_between(select(func.coalesce(func.sum(Expense.amount), 0)).where(Expense.organization_id == organization_id), Expense.expense_date, date_from, date_to))
     sales, purchases, expenses = money_float(sales), money_float(purchases), money_float(expenses)
@@ -183,21 +192,23 @@ def overview(db: Session, organization_id) -> dict:
     return {
         "customers": db.scalar(select(func.count()).select_from(Customer).where(Customer.organization_id == organization_id)) or 0,
         "leads": db.scalar(select(func.count()).select_from(Lead).where(Lead.organization_id == organization_id)) or 0,
-        "revenue": money_float(db.scalar(select(func.coalesce(func.sum(SalesInvoice.grand_total), 0)).where(SalesInvoice.organization_id == organization_id))),
-        "outstanding": money_float(db.scalar(select(func.coalesce(func.sum(SalesInvoice.balance_due), 0)).where(SalesInvoice.organization_id == organization_id))),
+        "revenue": money_float(db.scalar(select(func.coalesce(func.sum(SalesInvoice.grand_total), 0)).where(SalesInvoice.organization_id == organization_id, not_cancelled(organization_id)))),
+        "outstanding": money_float(db.scalar(select(func.coalesce(func.sum(SalesInvoice.balance_due), 0)).where(SalesInvoice.organization_id == organization_id, not_cancelled(organization_id)))),
         "purchases": money_float(db.scalar(select(func.coalesce(func.sum(PurchaseInvoice.grand_total), 0)).where(PurchaseInvoice.organization_id == organization_id))),
         "expenses": money_float(db.scalar(select(func.coalesce(func.sum(Expense.amount), 0)).where(Expense.organization_id == organization_id))),
         "products": db.scalar(select(func.count()).select_from(Product).where(Product.organization_id == organization_id, Product.is_active.is_(True))) or 0,
     }
 
 
-def grouped_chart(db: Session, model, amount_column, date_column, organization_id, date_from=None, date_to=None):
+def grouped_chart(db: Session, model, amount_column, date_column, organization_id, date_from=None, date_to=None, extra=None):
     stmt = (
         select(date_column.label("day"), func.coalesce(func.sum(amount_column), 0).label("amount"))
         .where(model.organization_id == organization_id)
         .group_by(date_column)
         .order_by(date_column)
     )
+    if extra is not None:
+        stmt = stmt.where(extra)
     return records(db.execute(_between(stmt, date_column, date_from, date_to)).all())
 
 
@@ -209,7 +220,8 @@ def top_products(db: Session, organization_id):
     stmt = (
         select(Product.name, Product.sku, func.coalesce(func.sum(SalesInvoiceItem.quantity), 0).label("quantity"))
         .join(SalesInvoiceItem, (SalesInvoiceItem.product_id == Product.id) & (SalesInvoiceItem.organization_id == Product.organization_id))
-        .where(Product.organization_id == organization_id)
+        .join(SalesInvoice, (SalesInvoice.id == SalesInvoiceItem.invoice_id) & (SalesInvoice.organization_id == SalesInvoiceItem.organization_id))
+        .where(Product.organization_id == organization_id, not_cancelled(organization_id))
         .group_by(Product.id)
         .order_by(func.sum(SalesInvoiceItem.quantity).desc())
         .limit(10)
@@ -221,7 +233,7 @@ def top_customers(db: Session, organization_id):
     stmt = (
         select(Customer.display_name, func.coalesce(func.sum(SalesInvoice.grand_total), 0).label("revenue"))
         .join(SalesInvoice, (SalesInvoice.customer_id == Customer.id) & (SalesInvoice.organization_id == Customer.organization_id))
-        .where(Customer.organization_id == organization_id)
+        .where(Customer.organization_id == organization_id, not_cancelled(organization_id))
         .group_by(Customer.id)
         .order_by(func.sum(SalesInvoice.grand_total).desc())
         .limit(10)

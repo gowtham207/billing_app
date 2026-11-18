@@ -9,6 +9,7 @@ type Session = {
   refreshToken: string
   organizationId: string | null
   branchId: string | null
+  branchChosen: boolean
   user: User | null
   permissions: string[]
   roles: string[]
@@ -20,6 +21,7 @@ type SessionContextValue = Session & {
   theme: 'light' | 'dark'
   setTheme: (theme: 'light' | 'dark') => void
   setBranchId: (id: string) => void
+  skipBranch: () => void
   can: (permission: string) => boolean
   login: (email: string, password: string) => Promise<MeResponse>
   logout: () => Promise<void>
@@ -34,6 +36,7 @@ const empty: Session = {
   refreshToken: '',
   organizationId: null,
   branchId: null,
+  branchChosen: false,
   user: null,
   permissions: [],
   roles: [],
@@ -105,11 +108,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const acceptTokens = async (tokens: { access_token: string; refresh_token: string; organization_id: string | null; user?: User }) => {
+    const sameOrganization = Boolean(tokens.organization_id) && tokens.organization_id === session.organizationId
     persist({
       ...session,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       organizationId: tokens.organization_id,
+      branchId: sameOrganization ? session.branchId : null,
+      branchChosen: sameOrganization ? session.branchChosen : false,
       user: tokens.user ?? session.user,
     })
     const me = await authService.me()
@@ -117,7 +123,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       organizationId: me.organization_id,
-      branchId: session.branchId,
+      branchId: sameOrganization ? session.branchId : null,
+      branchChosen: sameOrganization ? session.branchChosen : false,
       user: me.user,
       permissions: me.permissions,
       roles: me.roles,
@@ -132,7 +139,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       ready,
       theme,
       setTheme: setThemeState,
-      setBranchId: (branchId) => persist({ ...session, branchId }),
+      setBranchId: (branchId) => persist({ ...session, branchId, branchChosen: true }),
+      skipBranch: () => persist({ ...session, branchId: null, branchChosen: true }),
       can: (permission) => allows({ permissions: session.permissions, roles: session.roles, platformAdmin: Boolean(session.user?.is_platform_admin) }, permission),
       login: async (email, password) => acceptTokens(await authService.login(email, password)),
       logout: async () => {

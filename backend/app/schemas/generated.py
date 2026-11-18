@@ -1779,6 +1779,7 @@ class SalesOrderRead(AppSchema):
     discount_total: Decimal
     tax_total: Decimal
     grand_total: Decimal
+    notes: str | None = None
     created_by: uuid.UUID | None
     created_at: datetime
 

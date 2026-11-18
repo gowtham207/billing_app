@@ -1249,6 +1249,7 @@ class SalesOrder(Base):
     discount_total: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, server_default=text('0'))
     tax_total: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, server_default=text('0'))
     grand_total: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False, server_default=text('0'))
+    notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey('app.users.id', ondelete='SET NULL'), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text('now()'))
 

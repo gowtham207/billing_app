@@ -6,6 +6,8 @@ const WRITE_ALIASES: Record<string, string> = {
   'products.update': 'inventory.write',
   'products.delete': 'inventory.write',
   'invoices.create': 'billing.write',
+  'quotations.create': 'billing.write',
+  'orders.create': 'billing.write',
   'invoices.post': 'billing.write',
   'invoices.cancel': 'billing.write',
   'payments.create': 'billing.write',

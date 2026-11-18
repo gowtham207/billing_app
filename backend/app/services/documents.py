@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
@@ -103,6 +104,63 @@ def create_quotation(db: Session, ctx: Context, body) -> Quotation:
     return quotation
 
 
+_SHEET_MARKERS = ("\n[[peaksuite-order]]\n", "\n[[peaksuite-quote]]\n")
+
+
+def _split_notes(notes: str | None) -> tuple[str | None, dict | None]:
+    if not notes:
+        return None, None
+    for marker in _SHEET_MARKERS:
+        if marker in notes:
+            text, raw = notes.split(marker, 1)
+            try:
+                sheet = json.loads(raw)
+            except json.JSONDecodeError:
+                return text.strip() or None, None
+            return text.strip() or None, sheet if isinstance(sheet, dict) else None
+    return notes, None
+
+
+def _decimal_text(value) -> Decimal:
+    cleaned = str(value or "0").replace(",", "").replace("₹", "").strip()
+    return Decimal(cleaned or "0")
+
+
+def _snapshot_from_sheet(sheet: dict | None, terms: str | None) -> dict | None:
+    if not sheet:
+        return None
+    return {
+        "from": sheet.get("from"),
+        "to": sheet.get("to"),
+        "bill_to": sheet.get("bill_to"),
+        "place_of_supply": sheet.get("place"),
+        "treatment": sheet.get("treatment"),
+        "show_discount": True,
+        "payment_terms": terms,
+        "lines": [
+            {
+                "product_id": line.get("product_id") or None,
+                "description": line.get("description") or "",
+                "sku": line.get("sku") or "",
+                "hsn": line.get("hsn") or "",
+                "quantity": str(line.get("quantity") or "1"),
+                "unit": line.get("unit") or "",
+                "unit_price": str(line.get("unit_price") or "0"),
+                "discount": str(line.get("discount") or "0"),
+                "gst_rate": line.get("gst_rate") or 0,
+                "exempt": bool(line.get("exempt")),
+                "cgst": str(line.get("cgst") or "0"),
+                "sgst": str(line.get("sgst") or "0"),
+                "igst": str(line.get("igst") or "0"),
+                "total": str(line.get("total") or "0"),
+                "warehouse_id": line.get("warehouse_id") or None,
+            }
+            for line in sheet.get("lines") or []
+            if isinstance(line, dict)
+        ],
+    }
+
+
 def create_sales_order(db: Session, ctx: Context, body, quotation: Quotation | None = None) -> SalesOrder:
     customer_id = body.customer_id if quotation is None else quotation.customer_id
     get_scoped(db, Customer, customer_id, ctx.organization_id)
@@ -131,6 +189,7 @@ def create_sales_order(db: Session, ctx: Context, body, quotation: Quotation | N
         discount_total=discount,
         tax_total=tax,
         grand_total=grand,
+        notes=quotation.notes if quotation is not None else getattr(body, "notes", None),
         created_by=ctx.user.id,
     )
     db.add(order)
@@ -147,7 +206,7 @@ def create_sales_order(db: Session, ctx: Context, body, quotation: Quotation | N
                 unit_price=quantity(line["unit_price"]),
                 discount_amount=money(line.get("discount_amount") or 0),
                 tax_rate=line.get("tax_rate") or 0,
-                line_total=_line_total(line["quantity"], line["unit_price"], line.get("discount_amount") or 0),
+                line_total=_line_total(line["quantity"], line["unit_price"], line.get("discount_amount") or 0, line.get("tax_amount") or 0),
             )
         )
     set_status(db, order, ctx=ctx, module_key="billing", entity_key="sales_order", status_key="draft")
@@ -155,28 +214,53 @@ def create_sales_order(db: Session, ctx: Context, body, quotation: Quotation | N
     return order
 
 
+def delete_quotation(db: Session, ctx: Context, quotation: Quotation) -> None:
+    for order in db.scalars(select(SalesOrder).where(SalesOrder.organization_id == ctx.organization_id, SalesOrder.quotation_id == quotation.id)).all():
+        order.quotation_id = None
+    db.flush()
+    db.delete(quotation)
+    db.flush()
+
+
+def delete_sales_order(db: Session, ctx: Context, order: SalesOrder) -> None:
+    invoiced = db.scalar(select(SalesInvoice.id).where(SalesInvoice.organization_id == ctx.organization_id, SalesInvoice.sales_order_id == order.id))
+    if invoiced:
+        raise HTTPException(status_code=409, detail="This sales order has an invoice, so it cannot be deleted")
+    db.delete(order)
+    db.flush()
+
+
 def create_invoice(db: Session, ctx: Context, body, order: SalesOrder | None = None) -> SalesInvoice:
     customer_id = body.customer_id if order is None else order.customer_id
     get_scoped(db, Customer, customer_id, ctx.organization_id)
+    note_text = None
+    sheet = None
     if order is None:
         source_lines = [item.model_dump() for item in body.items]
     else:
         existing = db.scalar(select(SalesInvoice.id).where(SalesInvoice.sales_order_id == order.id))
         if existing:
             raise HTTPException(status_code=409, detail="Sales order is already invoiced")
-        source_lines = [
-            {
-                "product_id": item.product_id,
-                "variant_id": item.variant_id,
-                "description": item.description,
-                "quantity": item.quantity,
-                "unit_price": item.unit_price,
-                "discount_amount": item.discount_amount,
-                "tax_amount": 0,
-                "warehouse_id": None,
-            }
-            for item in db.scalars(select(SalesOrderItem).where(SalesOrderItem.sales_order_id == order.id)).all()
-        ]
+        note_text, sheet = _split_notes(order.notes)
+        packed = [line for line in (sheet or {}).get("lines") or [] if isinstance(line, dict)]
+        source_lines = []
+        for index, item in enumerate(db.scalars(select(SalesOrderItem).where(SalesOrderItem.sales_order_id == order.id)).all()):
+            extra = packed[index] if index < len(packed) else {}
+            tax = _decimal_text(extra.get("cgst")) + _decimal_text(extra.get("sgst")) + _decimal_text(extra.get("igst"))
+            source_lines.append(
+                {
+                    "product_id": item.product_id,
+                    "variant_id": item.variant_id,
+                    "description": item.description,
+                    "quantity": item.quantity,
+                    "unit_price": item.unit_price,
+                    "discount_amount": item.discount_amount,
+                    "tax_rate": item.tax_rate,
+                    "tax_amount": tax,
+                    "warehouse_id": extra.get("warehouse_id") or None,
+                }
+            )
+        source_lines = [_priced(line) for line in source_lines]
     shipping = getattr(body, "shipping_amount", 0) or 0
     subtotal, discount, tax, grand = _header_totals(source_lines, price_key="unit_price", shipping=shipping)
     invoice = SalesInvoice(
@@ -194,8 +278,8 @@ def create_invoice(db: Session, ctx: Context, body, order: SalesOrder | None = N
         shipping_amount=money(shipping),
         grand_total=grand,
         amount_paid=0,
-        notes=getattr(body, "notes", None),
-        billing_snapshot=getattr(body, "billing_snapshot", None),
+        notes=note_text if order is not None else getattr(body, "notes", None),
+        billing_snapshot=_snapshot_from_sheet(sheet, note_text) if order is not None else getattr(body, "billing_snapshot", None),
         created_by=ctx.user.id,
     )
     db.add(invoice)
@@ -221,15 +305,38 @@ def create_invoice(db: Session, ctx: Context, body, order: SalesOrder | None = N
     return invoice
 
 
-def post_invoice(db: Session, ctx: Context, invoice: SalesInvoice) -> SalesInvoice:
-    if invoice.issued_at is not None or status_key(db, invoice.status_id) == "posted":
-        raise HTTPException(status_code=409, detail="Invoice is already posted")
+def _tracked_invoice_lines(db: Session, invoice: SalesInvoice):
+    rows = []
     for item in db.scalars(select(SalesInvoiceItem).where(SalesInvoiceItem.invoice_id == invoice.id)).all():
         if item.product_id is None or item.warehouse_id is None:
             continue
         product = db.get(Product, item.product_id)
         if product is None or not product.track_inventory:
             continue
+        rows.append((item, product))
+    return rows
+
+
+def _reverse_posted_stock(db: Session, ctx: Context, invoice: SalesInvoice, notes: str = "Reversal before invoice edit") -> None:
+    for item, product in _tracked_invoice_lines(db, invoice):
+        apply_movement(
+            db,
+            organization_id=ctx.organization_id,
+            warehouse_id=item.warehouse_id,
+            product_id=item.product_id,
+            variant_id=item.variant_id,
+            movement_type="adjustment",
+            quantity_delta=item.quantity,
+            unit_cost=product.purchase_price,
+            source_type="sales_invoice_edit",
+            source_id=invoice.id,
+            user_id=ctx.user.id,
+            notes=notes,
+        )
+
+
+def _issue_invoice_stock(db: Session, ctx: Context, invoice: SalesInvoice) -> None:
+    for item, product in _tracked_invoice_lines(db, invoice):
         apply_movement(
             db,
             organization_id=ctx.organization_id,
@@ -243,6 +350,75 @@ def post_invoice(db: Session, ctx: Context, invoice: SalesInvoice) -> SalesInvoi
             source_id=invoice.id,
             user_id=ctx.user.id,
         )
+
+
+def update_sales_invoice(db: Session, ctx: Context, invoice: SalesInvoice, body) -> SalesInvoice:
+    current = status_key(db, invoice.status_id)
+    if current == "cancelled":
+        raise HTTPException(status_code=409, detail="Cancelled invoices cannot be edited")
+    get_scoped(db, Customer, body.customer_id, ctx.organization_id)
+    lines = [item.model_dump() for item in body.items]
+    shipping = getattr(body, "shipping_amount", 0) or 0
+    subtotal, discount, tax, grand = _header_totals(lines, price_key="unit_price", shipping=shipping)
+    paid = invoice.amount_paid or Decimal("0")
+    if paid > grand:
+        raise HTTPException(status_code=409, detail="Invoice total cannot be less than the amount already paid")
+    posted = invoice.issued_at is not None or current == "posted"
+    reopen = bool(getattr(body, "reopen", False))
+    if posted:
+        _reverse_posted_stock(db, ctx, invoice)
+    invoice.customer_id = body.customer_id
+    invoice.branch_id = body.branch_id
+    invoice.sales_order_id = body.sales_order_id
+    invoice.invoice_date = body.invoice_date or invoice.invoice_date
+    invoice.due_date = body.due_date
+    invoice.shipping_amount = money(shipping)
+    invoice.subtotal = subtotal
+    invoice.discount_total = discount
+    invoice.tax_total = tax
+    invoice.grand_total = grand
+    invoice.notes = body.notes
+    invoice.billing_snapshot = body.billing_snapshot or {}
+    for item in db.scalars(select(SalesInvoiceItem).where(SalesInvoiceItem.invoice_id == invoice.id)).all():
+        db.delete(item)
+    db.flush()
+    for line in lines:
+        db.add(
+            SalesInvoiceItem(
+                organization_id=ctx.organization_id,
+                invoice_id=invoice.id,
+                product_id=line.get("product_id"),
+                variant_id=line.get("variant_id"),
+                description=line["description"],
+                quantity=quantity(line["quantity"]),
+                unit_price=quantity(line["unit_price"]),
+                discount_amount=money(line.get("discount_amount") or 0),
+                tax_amount=money(line.get("tax_amount") or 0),
+                line_total=_line_total(line["quantity"], line["unit_price"], line.get("discount_amount") or 0, line.get("tax_amount") or 0),
+                warehouse_id=line.get("warehouse_id"),
+            )
+        )
+    db.flush()
+    if posted and reopen:
+        invoice.issued_at = None
+        set_status(db, invoice, ctx=ctx, module_key="billing", entity_key="sales_invoice", status_key="draft")
+    elif posted:
+        _issue_invoice_stock(db, ctx, invoice)
+        if invoice.issued_at is None:
+            invoice.issued_at = datetime.now(timezone.utc)
+        if current != "posted":
+            set_status(db, invoice, ctx=ctx, module_key="billing", entity_key="sales_invoice", status_key="posted")
+    elif reopen and current != "draft":
+        set_status(db, invoice, ctx=ctx, module_key="billing", entity_key="sales_invoice", status_key="draft")
+    db.flush()
+    db.refresh(invoice)
+    return invoice
+
+
+def post_invoice(db: Session, ctx: Context, invoice: SalesInvoice) -> SalesInvoice:
+    if invoice.issued_at is not None or status_key(db, invoice.status_id) == "posted":
+        raise HTTPException(status_code=409, detail="Invoice is already posted")
+    _issue_invoice_stock(db, ctx, invoice)
     invoice.issued_at = datetime.now(timezone.utc)
     set_status(db, invoice, ctx=ctx, module_key="billing", entity_key="sales_invoice", status_key="posted")
     return invoice
@@ -252,21 +428,7 @@ def cancel_invoice(db: Session, ctx: Context, invoice: SalesInvoice) -> SalesInv
     if invoice.amount_paid and invoice.amount_paid > 0:
         raise HTTPException(status_code=409, detail="Paid invoices cannot be cancelled")
     if invoice.issued_at is not None:
-        for item in db.scalars(select(SalesInvoiceItem).where(SalesInvoiceItem.invoice_id == invoice.id)).all():
-            if item.product_id and item.warehouse_id:
-                apply_movement(
-                    db,
-                    organization_id=ctx.organization_id,
-                    warehouse_id=item.warehouse_id,
-                    product_id=item.product_id,
-                    variant_id=item.variant_id,
-                    movement_type="adjustment",
-                    quantity_delta=item.quantity,
-                    source_type="sales_invoice_cancel",
-                    source_id=invoice.id,
-                    user_id=ctx.user.id,
-                    notes="Reversal for cancelled invoice",
-                )
+        _reverse_posted_stock(db, ctx, invoice, "Reversal on invoice cancel")
     set_status(db, invoice, ctx=ctx, module_key="billing", entity_key="sales_invoice", status_key="cancelled")
     return invoice
 
@@ -574,6 +736,8 @@ def allocate_customer_payment(db: Session, ctx: Context, payment: Payment, alloc
             raise HTTPException(status_code=422, detail="Allocation exceeds the unapplied payment")
         invoice = get_scoped(db, SalesInvoice, allocation.invoice_id, ctx.organization_id)
         db.refresh(invoice)
+        if status_key(db, invoice.status_id) in {"cancelled", "canceled"}:
+            raise HTTPException(status_code=409, detail="Cancelled invoices cannot receive a payment")
         if amount > invoice.balance_due:
             raise HTTPException(status_code=422, detail="Allocation exceeds the invoice balance")
         db.add(

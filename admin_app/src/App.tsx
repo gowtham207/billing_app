@@ -5,7 +5,6 @@ import { useSession } from '@/session'
 import { AdminsPage } from '@/pages/AdminsPage'
 import { HomePage } from '@/pages/HomePage'
 import { LoginPage } from '@/pages/LoginPage'
-import { MappingPage } from '@/pages/MappingPage'
 import { OrganizationPage } from '@/pages/OrganizationPage'
 import { OrganizationsPage } from '@/pages/OrganizationsPage'
 import { PermissionsPage } from '@/pages/PermissionsPage'
@@ -27,7 +26,6 @@ export function App() {
         <Route path="organizations" element={<OrganizationsPage />} />
         <Route path="organizations/:id" element={<OrganizationPage />} />
         <Route path="users" element={<UsersPage />} />
-        <Route path="mapping" element={<MappingPage />} />
         <Route path="admins" element={<AdminsPage />} />
         <Route path="permissions" element={<PermissionsPage />} />
       </Route>

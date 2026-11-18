@@ -1,4 +1,4 @@
-import { Building2, KeyRound, LayoutDashboard, Link2, LogOut, Moon, Shield, Sun, Users } from 'lucide-react'
+import { Building2, KeyRound, LayoutDashboard, LogOut, Moon, Shield, Sun, Users } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useSession } from '@/session'
 
@@ -6,7 +6,6 @@ const links = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/organizations', label: 'Organizations', icon: Building2, end: false },
   { to: '/users', label: 'Workspace users', icon: Users, end: false },
-  { to: '/mapping', label: 'User mapping', icon: Link2, end: false },
   { to: '/admins', label: 'Administrators', icon: Shield, end: false },
   { to: '/permissions', label: 'Permissions', icon: KeyRound, end: false },
 ]

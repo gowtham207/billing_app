@@ -1,50 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Button, ConfirmDialog, Field, Modal, PageHeader, SelectField, StatusBadge, TextArea, useToast } from '@/components/common/ui'
+import { Button, ConfirmDialog, Modal, PageHeader, StatusBadge, useToast } from '@/components/common/ui'
 import { useSession } from '@/hooks/session'
 import { apiError } from '@/services/api'
 import { customerService } from '@/services/customer.service'
 import type { Address, Customer } from '@/types/api'
 import { formatInr } from '@/utils/money'
-
-type CustomerForm = {
-  display_name: string
-  customer_code: string
-  customer_type: 'individual' | 'business'
-  email: string
-  phone: string
-  alternate_phone: string
-  tax_registration_no: string
-  pan: string
-  line1: string
-  shipping_line1: string
-  state_region: string
-  district: string
-  city: string
-  postal_code: string
-  notes: string
-  is_active: boolean
-}
-
-const blank = (): CustomerForm => ({
-  display_name: '',
-  customer_code: '',
-  customer_type: 'business',
-  email: '',
-  phone: '',
-  alternate_phone: '',
-  tax_registration_no: '',
-  pan: '',
-  line1: '',
-  shipping_line1: '',
-  state_region: '',
-  district: '',
-  city: '',
-  postal_code: '',
-  notes: '',
-  is_active: true,
-})
+import { blankCustomer, CustomerFormFields, saveCustomer, type CustomerForm } from '@/features/crm/customers/customerForm'
 
 export function CustomersPage() {
   const session = useSession()
@@ -55,30 +18,14 @@ export function CustomersPage() {
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<Customer | null>(null)
-  const [form, setForm] = useState<CustomerForm>(blank())
+  const [form, setForm] = useState<CustomerForm>(blankCustomer())
   const [removeId, setRemoveId] = useState<string | null>(null)
   const customers = useQuery({
     queryKey: ['customers', q, status, page],
     queryFn: () => customerService.list({ q, page, page_size: 20, is_active: status === '' ? undefined : status === 'active' }),
   })
   const save = useMutation({
-    mutationFn: async () => {
-      const code = form.customer_code || `CUS-${Date.now().toString().slice(-6)}`
-      const body = {
-        customer_code: code,
-        customer_type: form.customer_type,
-        display_name: form.display_name,
-        email: form.email || null,
-        phone: form.phone || null,
-        tax_registration_no: form.tax_registration_no || null,
-        is_active: form.is_active,
-      }
-      const customer = editing ? await customerService.update(editing.id, body) : await customerService.create(body)
-      if (form.line1) await customerService.addAddress(customer.id, addressBody(customer.id, 'billing', form.line1, form))
-      if (form.shipping_line1) await customerService.addAddress(customer.id, addressBody(customer.id, 'shipping', form.shipping_line1, form))
-      if (form.notes) await customerService.addNote(customer.id, [form.notes, form.pan && `PAN: ${form.pan}`, form.alternate_phone && `Alternate phone: ${form.alternate_phone}`, form.district && `District: ${form.district}`].filter(Boolean).join('\n'))
-      return customer
-    },
+    mutationFn: () => saveCustomer(form, editing?.id),
     onSuccess: () => {
       toast('Customer saved')
       setOpen(false)
@@ -91,7 +38,7 @@ export function CustomersPage() {
   return (
     <div>
       <PageHeader title="Customers" subtitle="GSTIN is stored as the customer tax registration number. PAN, alternate phone, and district are saved on the customer note because those columns are not in the API.">
-        {session.can('customers.create') ? <Button onClick={() => { setEditing(null); setForm(blank()); setOpen(true) }}>Add customer</Button> : null}
+        {session.can('customers.create') ? <Button onClick={() => { setEditing(null); setForm(blankCustomer()); setOpen(true) }}>Add customer</Button> : null}
         <Button variant="secondary" onClick={() => exportCustomers(rows)}>Export customers</Button>
       </PageHeader>
       <div className="mb-3 flex flex-wrap gap-2">
@@ -116,7 +63,7 @@ export function CustomersPage() {
                 <td className="px-3 py-2">{customer.customer_type}</td>
                 <td className="px-3 py-2"><StatusBadge value={customer.is_active ? 'Active' : 'Inactive'} /></td>
                 <td className="px-3 py-2 text-right">
-                  {session.can('customers.update') ? <Button variant="ghost" onClick={() => { setEditing(customer); setForm({ ...blank(), ...customer, customer_type: customer.customer_type, email: customer.email ?? '', phone: customer.phone ?? '', tax_registration_no: customer.tax_registration_no ?? '' }); setOpen(true) }}>Edit</Button> : null}
+                  {session.can('customers.update') ? <Button variant="ghost" onClick={() => { setEditing(customer); setForm({ ...blankCustomer(), ...customer, customer_type: customer.customer_type, email: customer.email ?? '', phone: customer.phone ?? '', tax_registration_no: customer.tax_registration_no ?? '' }); setOpen(true) }}>Edit</Button> : null}
                   {session.can('customers.delete') ? <Button variant="ghost" onClick={() => setRemoveId(customer.id)}>Delete</Button> : null}
                 </td>
               </tr>
@@ -133,31 +80,7 @@ export function CustomersPage() {
         </div>
       </div>
       <Modal title={editing ? 'Edit customer' : 'Add customer'} open={open} onClose={() => setOpen(false)}>
-        <form className="grid gap-3 md:grid-cols-2" onSubmit={(event) => { event.preventDefault(); save.mutate() }}>
-          <Field label="Customer name" value={form.display_name} onChange={(event) => setForm({ ...form, display_name: event.target.value })} required />
-          <Field label="Customer code" value={form.customer_code} placeholder="Auto-generated if empty" onChange={(event) => setForm({ ...form, customer_code: event.target.value })} />
-          <SelectField label="Customer type" value={form.customer_type} onChange={(event) => setForm({ ...form, customer_type: event.target.value as CustomerForm['customer_type'] })}>
-            <option value="individual">Individual</option>
-            <option value="business">Business</option>
-          </SelectField>
-          <Field label="Email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-          <Field label="Mobile number" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} />
-          <Field label="Alternate mobile number" value={form.alternate_phone} onChange={(event) => setForm({ ...form, alternate_phone: event.target.value })} />
-          <Field label="GSTIN" value={form.tax_registration_no} onChange={(event) => setForm({ ...form, tax_registration_no: event.target.value })} />
-          <Field label="PAN" value={form.pan} onChange={(event) => setForm({ ...form, pan: event.target.value })} />
-          <Field label="Billing address" value={form.line1} onChange={(event) => setForm({ ...form, line1: event.target.value })} />
-          <Field label="Shipping address" value={form.shipping_line1} onChange={(event) => setForm({ ...form, shipping_line1: event.target.value })} />
-          <Field label="State" value={form.state_region} onChange={(event) => setForm({ ...form, state_region: event.target.value })} />
-          <Field label="District" value={form.district} onChange={(event) => setForm({ ...form, district: event.target.value })} />
-          <Field label="City" value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value })} />
-          <Field label="Pincode" value={form.postal_code} onChange={(event) => setForm({ ...form, postal_code: event.target.value })} />
-          <SelectField label="Status" value={form.is_active ? 'active' : 'inactive'} onChange={(event) => setForm({ ...form, is_active: event.target.value === 'active' })}>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </SelectField>
-          <div className="md:col-span-2"><TextArea label="Notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
-          <div className="md:col-span-2 flex justify-end"><Button type="submit" disabled={save.isPending}>Save customer</Button></div>
-        </form>
+        <CustomerFormFields form={form} onChange={setForm} pending={save.isPending} submitLabel="Save customer" onSubmit={(event) => { event.preventDefault(); save.mutate() }} />
       </Modal>
       <ConfirmDialog open={Boolean(removeId)} title="Delete customer" message="This removes the customer when the server allows it." onClose={() => setRemoveId(null)} onConfirm={() => {
         if (!removeId) return
@@ -165,10 +88,6 @@ export function CustomersPage() {
       }} />
     </div>
   )
-}
-
-function addressBody(customerId: string, addressType: string, line1: string, form: CustomerForm) {
-  return { customer_id: customerId, address_type: addressType, line1, city: form.city || null, state_region: form.state_region || null, postal_code: form.postal_code || null, country_code: 'IN' }
 }
 
 function exportCustomers(rows: Customer[]) {

@@ -4,6 +4,8 @@ export type BillingExtras = {
   upiEnabled: boolean
   pan: string
   gstEnabled: boolean
+  discountEnabled: boolean
+  defaultDiscount: string
   defaultRate: string
   logoDataUrl: string
   placeOfSupply: string
@@ -15,6 +17,8 @@ const empty: BillingExtras = {
   upiEnabled: false,
   pan: '',
   gstEnabled: true,
+  discountEnabled: true,
+  defaultDiscount: '0',
   defaultRate: '18',
   logoDataUrl: '',
   placeOfSupply: '',

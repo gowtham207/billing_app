@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
-import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Button, Field, Modal, PageHeader, SelectField, StatusBadge, TextArea, useToast } from '@/components/common/ui'
+import { Button, ConfirmDialog, Field, Modal, PageHeader, StatusBadge, TextArea, useToast } from '@/components/common/ui'
 import { useSession } from '@/hooks/session'
 import { apiError } from '@/services/api'
 import { billingService, invoiceService, paymentService } from '@/services/billing.service'
@@ -12,8 +12,9 @@ import { crmService } from '@/services/crm.service'
 import { inventoryService, productService } from '@/services/inventory.service'
 import { organizationService } from '@/services/organization.service'
 import type { BillingSnapshot, GstLine, Invoice, PartyAddress } from '@/types/api'
+import { CustomerSelect } from '@/features/crm/customers/CustomerSelect'
 import { readExtras } from '@/features/billing/extras'
-import { downloadInvoicePdf } from '@/features/billing/pdf/invoicePdf'
+import { downloadSheet, printSheet } from '@/features/billing/printSheet'
 import { buildTaxInvoice, TaxInvoiceSheet, type TaxInvoiceLine } from '@/features/billing/TaxInvoiceSheet'
 import { paiseFields, previewGst } from '@/utils/gst'
 import { formatInr, fromPaise, toPaise } from '@/utils/money'
@@ -55,10 +56,9 @@ export function InvoicesPage() {
         {session.can('invoices.create') ? <Link to="/billing/invoices/new"><Button>Create invoice</Button></Link> : null}
       </PageHeader>
       <div className="mb-3 flex flex-wrap gap-2">
-        <select className="control px-3 py-2 text-sm" value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
-          <option value="">All customers</option>
-          {(customers.data?.items ?? []).map((customer) => <option key={customer.id} value={customer.id}>{customer.display_name}</option>)}
-        </select>
+        <div className="min-w-56">
+          <CustomerSelect value={customerId} onChange={setCustomerId} allowEmpty emptyLabel="All customers" placeholder="Search customers" />
+        </div>
         <select className="control px-3 py-2 text-sm" value={status} onChange={(event) => setStatus(event.target.value)}>
           <option value="">All statuses</option>
           {(statuses.data?.items ?? []).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
@@ -68,7 +68,7 @@ export function InvoicesPage() {
         <table className="min-w-full text-sm">
           <thead className="text-left text-muted"><tr>{['Invoice', 'Date', 'Customer', 'GSTIN', 'Subtotal', 'GST', 'Total', 'Paid', 'Balance', 'Status', ''].map((heading) => <th key={heading} className="px-2 py-2">{heading}</th>)}</tr></thead>
           <tbody>
-            {rows.map((invoice) => {
+            {invoices.isLoading ? <tr><td className="px-2 py-8 text-center text-muted" colSpan={11}>Loading invoices…</td></tr> : rows.length === 0 ? <tr><td className="px-2 py-8 text-center text-muted" colSpan={11}>No invoice data found</td></tr> : rows.map((invoice) => {
               const customer = name(invoice.customer_id)
               const label = statuses.data?.items.find((item) => item.id === invoice.status_id)?.label ?? 'Draft'
               return (
@@ -124,7 +124,14 @@ export function InvoiceEditorPage() {
   const [shipping, setShipping] = useState('0')
   const [lines, setLines] = useState<DraftLine[]>([blankLine()])
   const [preview, setPreview] = useState(false)
-  const locked = Boolean(existing.data?.issued_at)
+  const [customerOpen, setCustomerOpen] = useState(false)
+  const [newCustomer, setNewCustomer] = useState({ display_name: '', phone: '', email: '', gstin: '', line1: '', city: '', state: '', postal_code: '' })
+  const queryClient = useQueryClient()
+  const statuses = useQuery({ queryKey: ['statuses'], queryFn: crmService.statuses })
+  const statusKey = statuses.data?.items.find((item) => item.id === existing.data?.status_id)?.status_key
+  const locked = statusKey === 'cancelled'
+  const paid = Number(existing.data?.amount_paid ?? 0)
+  const hydrated = useRef(false)
 
   useEffect(() => {
     const registered = addresses.data?.find((address) => address.is_default) ?? addresses.data?.[0]
@@ -145,34 +152,46 @@ export function InvoiceEditorPage() {
   }, [organization.data, addresses.data, from.name])
 
   useEffect(() => {
-    if (!existing.data || !items.data) return
+    if (hydrated.current || !existing.data || !items.data) return
+    hydrated.current = true
     const snapshot = existing.data.billing_snapshot
     if (snapshot?.from) setFrom(snapshot.from)
     if (snapshot?.to) setTo(snapshot.to)
     if (snapshot?.bill_to) setBillTo(snapshot.bill_to)
     setCustomerId(existing.data.customer_id)
-    setInvoiceDate(existing.data.invoice_date)
-    setDueDate(existing.data.due_date ?? '')
+    setInvoiceDate(String(existing.data.invoice_date).slice(0, 10))
+    setDueDate(existing.data.due_date ? String(existing.data.due_date).slice(0, 10) : '')
     setNotes(existing.data.notes ?? '')
     setShipping(existing.data.shipping_amount)
     setReference(snapshot?.reference_no ?? '')
     setPlace(snapshot?.place_of_supply ?? '')
-    setLines(items.data.map((item) => {
-      const saved = snapshot?.lines?.find((line) => line.description === item.description)
-      return {
-        product_id: item.product_id ?? '',
-        description: item.description,
-        sku: saved?.sku ?? '',
-        hsn: saved?.hsn ?? '',
-        quantity: item.quantity,
-        unit: saved?.unit ?? '',
-        unit_price: item.unit_price,
-        discount: item.discount_amount,
-        gst_rate: saved?.gst_rate ?? 0,
-        exempt: saved?.exempt ?? false,
-        warehouse_id: item.warehouse_id ?? '',
-      }
-    }))
+    setTerms(snapshot?.payment_terms ?? '')
+    setSalesOrderId(existing.data.sales_order_id ?? '')
+    setLines(snapshot?.lines?.length ? snapshot.lines.map((line) => ({
+      product_id: line.product_id ?? '',
+      description: line.description,
+      sku: line.sku ?? '',
+      hsn: line.hsn ?? '',
+      quantity: line.quantity,
+      unit: line.unit ?? '',
+      unit_price: line.unit_price,
+      discount: line.discount ?? '0',
+      gst_rate: line.gst_rate ?? 0,
+      exempt: line.exempt ?? false,
+      warehouse_id: line.warehouse_id ?? '',
+    })) : items.data.map((item) => ({
+      product_id: item.product_id ?? '',
+      description: item.description,
+      sku: '',
+      hsn: '',
+      quantity: item.quantity,
+      unit: '',
+      unit_price: item.unit_price,
+      discount: item.discount_amount,
+      gst_rate: 0,
+      exempt: false,
+      warehouse_id: item.warehouse_id ?? '',
+    })))
   }, [existing.data, items.data])
 
   const inclusive = Boolean(settings.data?.tax_inclusive_pricing)
@@ -199,9 +218,16 @@ export function InvoiceEditorPage() {
   }), { taxable: 0, discount: 0, cgst: 0, sgst: 0, igst: 0, total: 0 })
   const grand = totals.total + toPaise(shipping)
   const treatment = computed.some((row) => row.split.treatment === 'inter') ? 'inter' : computed.every((row) => row.split.treatment === 'exempt') ? 'exempt' : 'intra'
+  const showDiscount = extras?.discountEnabled !== false
+  const discountFor = (quantity: string, price: string) => {
+    if (!showDiscount) return '0'
+    const amount = (Number(quantity) || 0) * (Number(price) || 0) * (Number(extras?.defaultDiscount) || 0) / 100
+    return amount ? amount.toFixed(2) : '0'
+  }
 
   const snapshot = (): BillingSnapshot => ({
     from, to, bill_to: billTo, place_of_supply: place, reference_no: reference, payment_terms: terms, treatment,
+    show_discount: showDiscount,
     upi_id: extras?.upiEnabled ? extras.upiId : undefined,
     merchant_name: extras?.merchantName || from.name,
     lines: computed.map((row): GstLine => ({
@@ -227,35 +253,43 @@ export function InvoiceEditorPage() {
   const payload = () => ({
     customer_id: customerId,
     branch_id: session.branchId || null,
-    sales_order_id: salesOrderId || null,
     invoice_date: invoiceDate,
     due_date: dueDate || null,
     shipping_amount: shipping || 0,
     notes: notes || null,
     billing_snapshot: snapshot(),
+    sales_order_id: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(salesOrderId) ? salesOrderId : null,
     items: computed.map((row) => ({
       product_id: row.line.product_id || null,
       description: row.line.description,
       quantity: row.line.quantity,
       unit_price: row.line.unit_price,
-      discount_amount: row.line.discount || 0,
+      discount_amount: showDiscount ? row.line.discount || 0 : 0,
       tax_rate: row.line.exempt ? 0 : row.line.gst_rate,
       tax_amount: row.money.tax,
       warehouse_id: row.line.warehouse_id || null,
     })),
   })
 
+  const invoiceTotal = Number(fromPaise(grand))
+  const belowPaid = !isNew && paid > 0 && invoiceTotal + 0.009 < paid
+  const saveLocked = locked || belowPaid
+
   const save = useMutation({
     mutationFn: async (mode: 'draft' | 'confirm' | 'post') => {
-      const body = payload()
+      const wasPosted = Boolean(existing.data?.issued_at) || statusKey === 'posted'
+      const body = { ...payload(), reopen: mode === 'draft' || (mode === 'confirm' && wasPosted) }
       const invoice = !isNew && existing.data ? await invoiceService.update(existing.data.id, body) : await invoiceService.create(body)
-      if (mode === 'draft') return invoice
+      if (mode === 'draft' || (wasPosted && mode === 'post')) return invoice
       const approved = await invoiceService.approve(invoice.id)
       if (mode === 'confirm') return approved
       return invoiceService.post(approved.id)
     },
     onSuccess: (invoice) => {
       toast('Invoice saved. Totals shown after save come from the server.')
+      queryClient.invalidateQueries({ queryKey: ['invoice', invoice.id] })
+      queryClient.invalidateQueries({ queryKey: ['invoice-items', invoice.id] })
+      queryClient.invalidateQueries({ queryKey: ['invoices'] })
       navigate(`/billing/invoices/${invoice.id}`)
     },
     onError: (error) => toast(apiError(error), 'error'),
@@ -289,9 +323,9 @@ export function InvoiceEditorPage() {
   const addLine = () => setLines([...lines, { ...blankLine(), gst_rate: Number(extras?.defaultRate || 18) }])
   const actions = (
     <div className="flex flex-col gap-2">
-      <Button disabled={locked || save.isPending || !customerId} onClick={() => save.mutate('post')}>{save.isPending ? 'Saving…' : 'Generate invoice'}</Button>
-      <Button variant="secondary" disabled={locked || save.isPending || !customerId} onClick={() => save.mutate('confirm')}>Save and confirm</Button>
-      <Button variant="secondary" disabled={locked || save.isPending || !customerId} onClick={() => save.mutate('draft')}>Save draft</Button>
+      <Button disabled={saveLocked || save.isPending || !customerId} onClick={() => save.mutate('post')}>{save.isPending ? 'Saving…' : 'Generate invoice'}</Button>
+      <Button variant="secondary" disabled={saveLocked || save.isPending || !customerId} onClick={() => save.mutate('confirm')}>Save and confirm</Button>
+      <Button variant="secondary" disabled={saveLocked || save.isPending || !customerId} onClick={() => save.mutate('draft')}>Save draft</Button>
       <Button variant="ghost" onClick={() => navigate('/billing/invoices')}>Cancel</Button>
     </div>
   )
@@ -300,19 +334,21 @@ export function InvoiceEditorPage() {
     <div className="space-y-4">
       <PageHeader title={isNew ? 'Create invoice' : existing.data?.invoice_no || 'Invoice'} subtitle="GST amounts are a preview. The stored total comes from the server when you save.">
         <Button variant="secondary" onClick={() => setPreview(true)}>Preview invoice</Button>
-        <Button className="xl:hidden" variant="secondary" disabled={locked || save.isPending || !customerId} onClick={() => save.mutate('draft')}>Save draft</Button>
-        <Button className="xl:hidden" disabled={locked || save.isPending || !customerId} onClick={() => save.mutate('post')}>Generate</Button>
+        <Button className="xl:hidden" variant="secondary" disabled={saveLocked || save.isPending || !customerId} onClick={() => save.mutate('draft')}>Save draft</Button>
+        <Button className="xl:hidden" disabled={saveLocked || save.isPending || !customerId} onClick={() => save.mutate('post')}>Generate</Button>
       </PageHeader>
-      {locked ? <p className="notice">This invoice is posted. Use cancel or a credit note instead of editing it.</p> : null}
+      {locked ? <p className="notice">This invoice is cancelled, so the sheet cannot be edited.</p> : null}
+      {!locked && paid > 0 ? <p className="notice">Payments of {formatInr(paid)} are already recorded. Keep the invoice total at or above that amount. The invoice number stays the same.</p> : null}
+      {belowPaid ? <p className="notice">The invoice total is below the amount already paid.</p> : null}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="min-w-0 space-y-4">
           <section className="panel p-4">
             <h2 className="mb-3 text-sm font-semibold">Invoice details</h2>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <SelectField label="Customer" value={customerId} onChange={(event) => chooseCustomer(event.target.value)}>
-                <option value="">Select customer</option>
-                {(customers.data?.items ?? []).map((customer) => <option key={customer.id} value={customer.id}>{customer.display_name}</option>)}
-              </SelectField>
+              <div className="relative">
+                <CustomerSelect label="Customer" value={customerId} onChange={chooseCustomer} />
+                {session.can('customers.create') ? <button type="button" className="absolute top-0 right-0 text-xs font-medium text-brand" onClick={() => setCustomerOpen(true)}>New customer</button> : null}
+              </div>
               <Field label="Invoice date" type="date" value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} />
               <Field label="Due date" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
               <Field label="Payment terms (days)" value={terms} onChange={(event) => setTerms(event.target.value)} />
@@ -339,17 +375,17 @@ export function InvoiceEditorPage() {
             <div className="data-table rounded-none border-0">
               <table className="min-w-[1080px] text-sm">
                 <thead className="text-left text-xs tracking-wide uppercase">
-                  <tr>{['Product', 'HSN', 'Qty', 'Unit', 'Price', 'Discount', 'GST', 'Taxable', 'CGST', 'SGST', 'IGST', 'Total', ''].map((heading) => <th key={heading} className={`px-3 py-2 font-medium ${['Taxable', 'CGST', 'SGST', 'IGST', 'Total', 'Price', 'Discount', 'Qty'].includes(heading) ? 'text-right' : ''}`}>{heading}</th>)}</tr>
+                  <tr>{['Product', 'HSN', 'Qty', 'Unit', 'Price', ...(showDiscount ? ['Discount'] : []), 'GST', 'Taxable', 'CGST', 'SGST', 'IGST', 'Total', ''].map((heading) => <th key={heading} className={`px-3 py-2 font-medium ${['Taxable', 'CGST', 'SGST', 'IGST', 'Total', 'Price', 'Discount', 'Qty'].includes(heading) ? 'text-right' : ''}`}>{heading}</th>)}</tr>
                 </thead>
                 <tbody>
                   {computed.length === 0 ? (
-                    <tr><td className="px-3 py-8 text-center text-muted" colSpan={13}>Add a product row to start this invoice.</td></tr>
+                    <tr><td className="px-3 py-8 text-center text-muted" colSpan={showDiscount ? 13 : 12}>Add a product row to start this invoice.</td></tr>
                   ) : computed.map((row, index) => (
                     <tr key={index} className="align-top">
                       <td className="min-w-52 px-3 py-2">
                         <select className="control w-full px-2 py-1.5 text-sm" value={row.line.product_id} onChange={(event) => {
                           const product = products.data?.items.find((item) => item.id === event.target.value)
-                          setLines(lines.map((line, lineIndex) => lineIndex === index ? { ...line, product_id: event.target.value, description: product?.name ?? line.description, sku: product?.sku ?? '', unit_price: product?.selling_price ?? line.unit_price, gst_rate: gstFromDescription(product?.description) } : line))
+                          setLines(lines.map((line, lineIndex) => lineIndex === index ? { ...line, product_id: event.target.value, description: product?.name ?? line.description, sku: product?.sku ?? '', unit_price: product?.selling_price ?? line.unit_price, discount: discountFor(line.quantity, product?.selling_price ?? line.unit_price), gst_rate: gstFromDescription(product?.description) } : line))
                         }}>
                           <option value="">Select product</option>
                           {(products.data?.items ?? []).map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
@@ -361,7 +397,7 @@ export function InvoiceEditorPage() {
                       <td className="px-3 py-2"><input className="control w-20 px-2 py-1.5 text-right text-sm tabular-nums" value={row.line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} /></td>
                       <td className="px-3 py-2"><input className="control w-20 px-2 py-1.5 text-sm" value={row.line.unit} onChange={(event) => updateLine(index, { unit: event.target.value })} /></td>
                       <td className="px-3 py-2"><input className="control w-24 px-2 py-1.5 text-right text-sm tabular-nums" value={row.line.unit_price} onChange={(event) => updateLine(index, { unit_price: event.target.value })} /></td>
-                      <td className="px-3 py-2"><input className="control w-20 px-2 py-1.5 text-right text-sm tabular-nums" value={row.line.discount} onChange={(event) => updateLine(index, { discount: event.target.value })} /></td>
+                      {showDiscount ? <td className="px-3 py-2"><input className="control w-20 px-2 py-1.5 text-right text-sm tabular-nums" value={row.line.discount} onChange={(event) => updateLine(index, { discount: event.target.value })} /></td> : null}
                       <td className="px-3 py-2">
                         <select className="control w-28 px-2 py-1.5 text-sm" value={row.line.exempt ? 'exempt' : String(row.line.gst_rate)} onChange={(event) => updateLine(index, event.target.value === 'exempt' ? { exempt: true, gst_rate: 0 } : { exempt: false, gst_rate: Number(event.target.value) })}>
                           <option value="exempt">Exempt</option>
@@ -409,14 +445,71 @@ export function InvoiceEditorPage() {
           {actions}
         </aside>
       </div>
+      <Modal title="New customer" open={customerOpen} onClose={() => setCustomerOpen(false)}>
+        <form className="grid gap-3 sm:grid-cols-2" onSubmit={async (event) => {
+          event.preventDefault()
+          try {
+            const customer = await customerService.create({
+              customer_code: `CUS-${Date.now().toString().slice(-6)}`,
+              customer_type: 'business',
+              display_name: newCustomer.display_name,
+              email: newCustomer.email || null,
+              phone: newCustomer.phone || null,
+              tax_registration_no: newCustomer.gstin || null,
+              is_active: true,
+            })
+            if (newCustomer.line1) {
+              const address = { customer_id: customer.id, line1: newCustomer.line1, city: newCustomer.city || null, state_region: newCustomer.state || null, postal_code: newCustomer.postal_code || null, country_code: 'IN' }
+              await customerService.addAddress(customer.id, { ...address, address_type: 'billing' })
+              await customerService.addAddress(customer.id, { ...address, address_type: 'shipping' })
+            }
+            const party: PartyAddress = {
+              ...emptyParty(),
+              name: newCustomer.display_name,
+              line1: newCustomer.line1,
+              city: newCustomer.city,
+              state: newCustomer.state,
+              postal_code: newCustomer.postal_code,
+              gstin: newCustomer.gstin,
+              phone: newCustomer.phone,
+              email: newCustomer.email,
+            }
+            setCustomerId(customer.id)
+            setTo(party)
+            setBillTo(party)
+            if (!place && newCustomer.state) setPlace(newCustomer.state)
+            setNewCustomer({ display_name: '', phone: '', email: '', gstin: '', line1: '', city: '', state: '', postal_code: '' })
+            setCustomerOpen(false)
+            toast('Customer created')
+            queryClient.invalidateQueries({ queryKey: ['customers-all'] })
+            queryClient.invalidateQueries({ queryKey: ['customers'] })
+          } catch (error) {
+            toast(apiError(error), 'error')
+          }
+        }}>
+          <Field label="Customer name" value={newCustomer.display_name} onChange={(event) => setNewCustomer({ ...newCustomer, display_name: event.target.value })} required />
+          <Field label="Phone" value={newCustomer.phone} onChange={(event) => setNewCustomer({ ...newCustomer, phone: event.target.value })} />
+          <Field label="Email" type="email" value={newCustomer.email} onChange={(event) => setNewCustomer({ ...newCustomer, email: event.target.value })} />
+          <Field label="GSTIN" value={newCustomer.gstin} onChange={(event) => setNewCustomer({ ...newCustomer, gstin: event.target.value })} />
+          <div className="sm:col-span-2"><Field label="Address" value={newCustomer.line1} onChange={(event) => setNewCustomer({ ...newCustomer, line1: event.target.value })} /></div>
+          <Field label="City" value={newCustomer.city} onChange={(event) => setNewCustomer({ ...newCustomer, city: event.target.value })} />
+          <Field label="State" value={newCustomer.state} onChange={(event) => setNewCustomer({ ...newCustomer, state: event.target.value })} />
+          <Field label="Pincode" value={newCustomer.postal_code} onChange={(event) => setNewCustomer({ ...newCustomer, postal_code: event.target.value })} />
+          <div className="sm:col-span-2 flex justify-end"><Button type="submit">Create customer</Button></div>
+        </form>
+      </Modal>
       <Modal title="Invoice preview" wide open={preview} onClose={() => setPreview(false)}>
         <TaxInvoiceSheet invoice={buildTaxInvoice({
           businessName: from.name,
-          phone: from.phone,
-          email: from.email,
+          seller: from,
+          buyer: billTo,
+          shipTo: to,
           invoiceNo: existing.data?.invoice_no || 'Draft',
           invoiceDate,
-          billToName: billTo.name || to.name,
+          dueDate,
+          placeOfSupply: place || billTo.state,
+          supplyType: treatment === 'inter' ? 'Inter-state' : treatment === 'exempt' ? 'Exempt' : 'Intra-state',
+          showDiscount,
           notes,
           shipping,
           lines: computed.map((row): TaxInvoiceLine => ({
@@ -489,42 +582,48 @@ export function InvoiceDetailPage() {
   const queryClient = useQueryClient()
   const invoice = useQuery({ queryKey: ['invoice', id], queryFn: () => invoiceService.get(id) })
   const items = useQuery({ queryKey: ['invoice-items', id], queryFn: () => invoiceService.items(id) })
+  const history = useQuery({ queryKey: ['invoice-payments', id], queryFn: () => invoiceService.payments(id) })
   const customer = useQuery({ queryKey: ['customer', invoice.data?.customer_id], enabled: Boolean(invoice.data?.customer_id), queryFn: () => customerService.get(invoice.data!.customer_id) })
   const methods = useQuery({ queryKey: ['payment-methods'], queryFn: billingService.paymentMethods })
+  const statuses = useQuery({ queryKey: ['statuses'], queryFn: crmService.statuses })
   const [qr, setQr] = useState('')
   const [amount, setAmount] = useState('')
+  const [confirmCancel, setConfirmCancel] = useState(false)
   const data = invoice.data
   const extras = session.organizationId ? readExtras(session.organizationId) : null
   if (!data) return <p className="text-sm">Loading invoice…</p>
   const snapshot = data.billing_snapshot ?? {}
   const upiId = snapshot.upi_id || (extras?.upiEnabled ? extras.upiId : '')
+  const statusKey = statuses.data?.items.find((item) => item.id === data.status_id)?.status_key
+  const canEdit = session.can('invoices.create') && statusKey !== 'cancelled'
   return (
     <div className="space-y-4">
       <PageHeader title={data.invoice_no} subtitle={`${data.invoice_date} · Balance ${formatInr(data.balance_due)}`}>
-        {session.can('invoices.create') && !data.issued_at ? <Link to={`/billing/invoices/${data.id}/edit`}><Button variant="secondary">Edit draft</Button></Link> : null}
-        <Button variant="secondary" onClick={() => downloadInvoicePdf(data, snapshot).catch((error) => toast(apiError(error), 'error'))}>Download PDF</Button>
-        <Button variant="secondary" onClick={() => invoiceService.pdfBlob(data.id).then((blob) => window.open(URL.createObjectURL(blob))).catch((error) => toast(apiError(error), 'error'))}>Server PDF</Button>
-        <Button variant="secondary" onClick={() => window.print()}>Print invoice</Button>
+        {canEdit ? <Link to={`/billing/invoices/${data.id}/edit`}><Button variant="secondary">Edit invoice</Button></Link> : null}
+        <Button variant="secondary" onClick={() => downloadSheet(data.invoice_no).catch((error) => toast(apiError(error), 'error'))}>Download PDF</Button>
+        <Button variant="secondary" onClick={() => printSheet(data.invoice_no)}>Print invoice</Button>
         <ShareButton invoice={data} phone={customer.data?.phone} name={customer.data?.display_name} />
-        <Button onClick={async () => {
+        {statusKey !== 'cancelled' ? <Button onClick={async () => {
           if (!upiId) return toast('Add a UPI ID in Billing Settings first.', 'error')
           const uri = upiPayUri({ upiId, merchantName: snapshot.merchant_name || extras?.merchantName || snapshot.from?.name || 'Merchant', amount: String(data.balance_due || data.grand_total), invoiceNo: data.invoice_no })
           setQr(await QRCode.toDataURL(uri))
-        }}>Generate UPI QR</Button>
-        {session.can('invoices.cancel') ? <Button variant="danger" onClick={() => invoiceService.cancel(data.id).then(() => queryClient.invalidateQueries({ queryKey: ['invoice', id] })).catch((error) => toast(apiError(error), 'error'))}>Cancel invoice</Button> : null}
+        }}>Generate UPI QR</Button> : null}
+        {session.can('invoices.cancel') ? <Button variant="danger" onClick={() => setConfirmCancel(true)}>Cancel invoice</Button> : null}
       </PageHeader>
       <div id="invoice-print">
         <TaxInvoiceSheet invoice={buildTaxInvoice({
           businessName: snapshot.from?.name || extras?.merchantName || 'Business',
-          phone: snapshot.from?.phone,
-          email: snapshot.from?.email,
+          seller: snapshot.from,
+          buyer: snapshot.bill_to,
+          shipTo: snapshot.to,
           invoiceNo: data.invoice_no,
           invoiceDate: data.invoice_date,
-          billToName: snapshot.bill_to?.name || customer.data?.display_name || 'Customer',
+          dueDate: data.due_date,
+          placeOfSupply: snapshot.place_of_supply || snapshot.bill_to?.state,
+          supplyType: snapshot.treatment === 'inter' ? 'Inter-state' : snapshot.treatment === 'exempt' ? 'Exempt' : 'Intra-state',
+          showDiscount: snapshot.show_discount !== false && extras?.discountEnabled !== false,
           notes: data.notes,
           shipping: data.shipping_amount,
-          received: data.amount_paid,
-          balance: data.balance_due,
           grandTotal: data.grand_total,
           lines: snapshot.lines?.length ? snapshot.lines.map((line) => ({
             description: line.description,
@@ -552,15 +651,39 @@ export function InvoiceDetailPage() {
           })),
         })} />
       </div>
+      <section className="panel overflow-hidden">
+        <div className="border-b border-line px-4 py-3">
+          <h2 className="text-sm font-semibold">Payment history</h2>
+        </div>
+        <div className="data-table rounded-none border-0">
+          <table className="min-w-full text-left text-sm">
+            <thead className="text-muted"><tr>{['Payment', 'Date', 'Amount', 'Reference', 'Status'].map((heading) => <th key={heading} className="px-3 py-2 font-medium">{heading}</th>)}</tr></thead>
+            <tbody>
+              {history.isLoading ? <tr><td className="px-3 py-6 text-muted" colSpan={5}>Loading payments…</td></tr> : (history.data ?? []).length === 0 ? <tr><td className="px-3 py-6 text-muted" colSpan={5}>No payment history</td></tr> : (history.data ?? []).map((payment) => (
+                <tr key={payment.payment_id} className="border-t border-line">
+                  <td className="px-3 py-2 font-medium">{payment.payment_no || '—'}</td>
+                  <td className="px-3 py-2">{payment.payment_date || '—'}</td>
+                  <td className="px-3 py-2 tabular-nums">{formatInr(payment.amount_applied)}</td>
+                  <td className="px-3 py-2">{payment.reference_no || '—'}</td>
+                  <td className="px-3 py-2"><StatusBadge value={payment.payment_status || 'completed'} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
       <p className="text-sm text-muted">A QR code does not confirm payment. Record the payment after you reconcile it.</p>
-      {session.can('payments.create') ? (
+      {session.can('payments.create') && statusKey !== 'cancelled' ? (
         <form className="flex flex-wrap items-end gap-2" onSubmit={async (event) => {
           event.preventDefault()
           try {
             const payment = await paymentService.create({ customer_id: data.customer_id, amount, payment_method_id: methods.data?.items[0]?.id ?? null, branch_id: session.branchId })
             await paymentService.allocate(payment.id, data.id, amount)
+            setAmount('')
             toast('Payment recorded')
             queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+            queryClient.invalidateQueries({ queryKey: ['invoice-payments', id] })
+            queryClient.invalidateQueries({ queryKey: ['payments'] })
           } catch (error) {
             toast(apiError(error), 'error')
           }
@@ -569,6 +692,23 @@ export function InvoiceDetailPage() {
           <Button type="submit">Record payment</Button>
         </form>
       ) : null}
+      <ConfirmDialog
+        open={confirmCancel}
+        title="Cancel invoice"
+        message={`Cancel ${data.invoice_no}? This cannot be undone from the invoice screen.`}
+        confirmLabel="Cancel invoice"
+        dismissLabel="Keep invoice"
+        onClose={() => setConfirmCancel(false)}
+        onConfirm={() => {
+          setConfirmCancel(false)
+          invoiceService.cancel(data.id)
+            .then(() => {
+              toast('Invoice cancelled')
+              queryClient.invalidateQueries({ queryKey: ['invoice', id] })
+            })
+            .catch((error) => toast(apiError(error), 'error'))
+        }}
+      />
       <Modal title="UPI QR" open={Boolean(qr)} onClose={() => setQr('')}>
         <img src={qr} alt="UPI QR code" className="mx-auto h-56 w-56" />
         <p className="mt-2 text-center text-sm">{upiId}</p>

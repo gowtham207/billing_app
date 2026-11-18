@@ -954,6 +954,7 @@ CREATE TABLE app.sales_orders (
     discount_total numeric(18,2) NOT NULL DEFAULT 0 CHECK (discount_total >= 0),
     tax_total numeric(18,2) NOT NULL DEFAULT 0 CHECK (tax_total >= 0),
     grand_total numeric(18,2) NOT NULL DEFAULT 0 CHECK (grand_total >= 0),
+    notes text,
     created_by uuid REFERENCES app.users(id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (organization_id, id),

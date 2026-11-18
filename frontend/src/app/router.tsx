@@ -2,9 +2,11 @@ import type { ReactNode } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { useSession } from '@/hooks/session'
-import { LoginPage, needsOrganizationChoice, SelectOrganizationPage } from '@/features/auth/AuthPages'
+import { LoginPage, needsWorkspaceChoice, SelectOrganizationPage } from '@/features/auth/AuthPages'
 import { BillingHomePage, BillingSettingsPage } from '@/features/billing/BillingSettingsPage'
 import { InvoiceDetailPage, InvoiceEditorPage, InvoicesPage } from '@/features/billing/InvoicePages'
+import { QuotationDetailPage, QuotationEditorPage, QuotationsPage } from '@/features/billing/QuotationPages'
+import { SalesOrderDetailPage, SalesOrderEditorPage, SalesOrdersPage } from '@/features/billing/SalesOrderPages'
 import { ActivitiesPage, KanbanPage, OpportunitiesPage } from '@/features/crm/kanban/KanbanPage'
 import { CustomerDetailPage, CustomersPage } from '@/features/crm/customers/CustomersPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
@@ -15,7 +17,7 @@ function Guard({ children }: { children: ReactNode }) {
   const session = useSession()
   if (!session.ready) return <p className="grid min-h-screen place-items-center bg-canvas text-sm text-muted">Loading session…</p>
   if (!session.accessToken) return <Navigate to="/login" replace />
-  if (needsOrganizationChoice(session.organizations, session.organizationId)) return <Navigate to="/select-organization" replace />
+  if (needsWorkspaceChoice(session)) return <Navigate to="/select-organization" replace />
   return children
 }
 
@@ -42,8 +44,14 @@ export function AppRouter() {
         <Route path="inventory/stock" element={<StockPage />} />
         <Route path="inventory/movements" element={<MovementsPage />} />
         <Route path="billing" element={<BillingHomePage />} />
-        <Route path="billing/quotations" element={<DocumentPage title="Quotations" path="/billing/quotations" createPath="/billing/quotations" action="send" />} />
-        <Route path="billing/orders" element={<DocumentPage title="Sales orders" path="/billing/orders" createPath="/billing/orders" action="confirm" />} />
+        <Route path="billing/quotations" element={<QuotationsPage />} />
+        <Route path="billing/quotations/new" element={<QuotationEditorPage />} />
+        <Route path="billing/quotations/:id/edit" element={<QuotationEditorPage />} />
+        <Route path="billing/quotations/:id" element={<QuotationDetailPage />} />
+        <Route path="billing/orders" element={<SalesOrdersPage />} />
+        <Route path="billing/orders/new" element={<SalesOrderEditorPage />} />
+        <Route path="billing/orders/:id/edit" element={<SalesOrderEditorPage />} />
+        <Route path="billing/orders/:id" element={<SalesOrderDetailPage />} />
         <Route path="billing/invoices" element={<InvoicesPage />} />
         <Route path="billing/invoices/new" element={<InvoiceEditorPage />} />
         <Route path="billing/invoices/:id/edit" element={<InvoiceEditorPage />} />

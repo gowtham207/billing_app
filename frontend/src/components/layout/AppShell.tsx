@@ -40,8 +40,6 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { BrandLockup } from '@/components/brand/BrandMark'
 import { useSession } from '@/hooks/session'
 import { accessService, dashboardService } from '@/services/dashboard.service'
-import { organizationService } from '@/services/organization.service'
-import { apiError } from '@/services/api'
 
 type NavItem = { label: string; to: string; icon: LucideIcon; end?: boolean }
 type NavGroup = { label: string; icon: LucideIcon; to?: string; end?: boolean; children?: NavItem[] }
@@ -162,11 +160,6 @@ export function AppShell() {
     setProfileOpen(false)
   }, [location.pathname])
 
-  const branches = useQuery({
-    queryKey: ['branches', session.organizationId],
-    enabled: Boolean(session.organizationId),
-    queryFn: () => organizationService.branches(session.organizationId!),
-  })
   const notifications = useQuery({
     queryKey: ['notifications'],
     enabled: Boolean(session.organizationId),
@@ -307,16 +300,6 @@ export function AppShell() {
               <button className="icon-button" onClick={toggleSidebar} aria-label={isTabletUp ? 'Toggle sidebar' : 'Open menu'}>
                 {isTabletUp ? (expanded ? <ChevronsLeft size={18} /> : <PanelLeft size={18} />) : <Menu size={18} />}
               </button>
-              <div className="hidden min-w-0 items-center gap-2 md:flex">
-                <select className="control max-w-44 truncate px-2 py-2 text-sm" value={session.organizationId ?? ''} onChange={(event) => session.switchOrganization(event.target.value).catch((error) => alert(apiError(error)))}>
-                  <option value="" disabled>Organization</option>
-                  {session.organizations.map((org) => <option key={org.id} value={org.id}>{org.display_name}</option>)}
-                </select>
-                <select className="control max-w-40 truncate px-2 py-2 text-sm" value={session.branchId ?? ''} onChange={(event) => session.setBranchId(event.target.value)}>
-                  <option value="">All branches</option>
-                  {(branches.data ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-                </select>
-              </div>
               <div className="relative min-w-0 flex-1">
                 <Search className="absolute top-2.5 left-2 text-muted" size={16} />
                 <input className="control w-full py-2 pr-8 pl-8 text-sm" placeholder="Search customers and products" value={query} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true) }} onFocus={() => setSearchOpen(true)} />
@@ -360,16 +343,6 @@ export function AppShell() {
                   </div>
                 ) : null}
               </div>
-            </div>
-            <div className="flex gap-2 px-3 pb-2 md:hidden">
-              <select className="control min-w-0 flex-1 px-2 py-2 text-sm" value={session.organizationId ?? ''} onChange={(event) => session.switchOrganization(event.target.value).catch((error) => alert(apiError(error)))}>
-                <option value="" disabled>Organization</option>
-                {session.organizations.map((org) => <option key={org.id} value={org.id}>{org.display_name}</option>)}
-              </select>
-              <select className="control min-w-0 flex-1 px-2 py-2 text-sm" value={session.branchId ?? ''} onChange={(event) => session.setBranchId(event.target.value)}>
-                <option value="">All branches</option>
-                {(branches.data ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-              </select>
             </div>
             <div className="flex flex-wrap items-center gap-1 px-3 pb-2 text-xs text-muted sm:px-4">
               <FileText size={12} /> <button onClick={() => navigate('/')}>Home</button>

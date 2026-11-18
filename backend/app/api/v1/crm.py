@@ -80,7 +80,7 @@ def upcoming(db: Session = Depends(get_db), ctx: Context = Depends(require_org))
     ).all()
 
 
-mount_collection(router, name="customers", path="/customers", model=Customer, read=CustomerRead, create=CustomerCreate, tag="CRM - Customers", search=("display_name", "customer_code", "email", "phone"), permission=P)
+mount_collection(router, name="customers", path="/customers", model=Customer, read=CustomerRead, create=CustomerCreate, tag="CRM - Customers", search=("display_name", "legal_name", "customer_code", "email", "phone", "tax_registration_no"), permission=P)
 mount_item(router, name="customers", path="/customers", model=Customer, read=CustomerRead, update=CustomerUpdate, tag="CRM - Customers", permission=P)
 mount_collection(router, name="lead_sources", path="/lead-sources", model=LeadSource, read=LeadSourceRead, create=LeadSourceCreate, tag="CRM - Leads", search=("name",), permission=P)
 mount_collection(router, name="customer_sources", path="/customer-sources", model=CustomerSource, read=CustomerSourceRead, create=CustomerSourceCreate, tag="CRM - Leads", search=("name",), permission=P)

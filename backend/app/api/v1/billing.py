@@ -17,9 +17,11 @@ from app.models import (
     Payment,
     PaymentMethod,
     Quotation,
+    QuotationItem,
     SalesInvoice,
     SalesInvoiceItem,
     SalesOrder,
+    SalesOrderItem,
     SalesReturn,
     TaxGroup,
     TaxGroupRate,
@@ -38,6 +40,8 @@ from app.schemas.generated import (
     PaymentMethodCreate,
     PaymentMethodRead,
     PaymentRead,
+    QuotationItemRead,
+    SalesOrderItemRead,
     QuotationRead,
     SalesInvoiceItemRead,
     SalesInvoiceRead,
@@ -67,11 +71,14 @@ from app.services.documents import (
     create_quotation,
     create_return,
     create_sales_order,
+    delete_quotation,
+    delete_sales_order,
     post_invoice,
     refund_payment,
+    update_sales_invoice,
 )
-from app.services.pdf import build_pdf
-from app.services.reports import customer_ledger
+from app.services.pdf import build_invoice_pdf, build_pdf
+from app.services.reports import customer_ledger, not_cancelled
 
 router = APIRouter(prefix="/billing")
 P = "billing.write"
@@ -144,6 +151,12 @@ def get_quotation(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = D
     return get_scoped(db, Quotation, id, ctx.organization_id)
 
 
+@router.get("/quotations/{id}/items", response_model=list[QuotationItemRead], tags=["Billing - Quotations & Sales Orders"])
+def quotation_items(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
+    get_scoped(db, Quotation, id, ctx.organization_id)
+    return db.scalars(select(QuotationItem).where(QuotationItem.organization_id == ctx.organization_id, QuotationItem.quotation_id == id)).all()
+
+
 @router.put("/quotations/{id}", response_model=QuotationRead, tags=["Billing - Quotations & Sales Orders"])
 def update_quotation(id: uuid.UUID, body: QuotationCreateRequest, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
     require_write(ctx, P)
@@ -153,6 +166,12 @@ def update_quotation(id: uuid.UUID, body: QuotationCreateRequest, db: Session = 
     db.delete(current)
     db.flush()
     return create_quotation(db, ctx, body)
+
+
+@router.delete("/quotations/{id}", status_code=204, tags=["Billing - Quotations & Sales Orders"])
+def remove_quotation(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
+    require_write(ctx, P)
+    delete_quotation(db, ctx, get_scoped(db, Quotation, id, ctx.organization_id))
 
 
 @router.post("/quotations/{id}/send", response_model=QuotationRead, tags=["Billing - Quotations & Sales Orders"])
@@ -199,6 +218,12 @@ def get_order(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = Depen
     return get_scoped(db, SalesOrder, id, ctx.organization_id)
 
 
+@router.get("/orders/{id}/items", response_model=list[SalesOrderItemRead], tags=["Billing - Quotations & Sales Orders"])
+def order_items(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
+    get_scoped(db, SalesOrder, id, ctx.organization_id)
+    return db.scalars(select(SalesOrderItem).where(SalesOrderItem.sales_order_id == id)).all()
+
+
 @router.put("/orders/{id}", response_model=SalesOrderRead, tags=["Billing - Quotations & Sales Orders"])
 def update_order(id: uuid.UUID, body: SalesOrderCreateRequest, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
     require_write(ctx, P)
@@ -208,6 +233,12 @@ def update_order(id: uuid.UUID, body: SalesOrderCreateRequest, db: Session = Dep
     db.delete(current)
     db.flush()
     return create_sales_order(db, ctx, body)
+
+
+@router.delete("/orders/{id}", status_code=204, tags=["Billing - Quotations & Sales Orders"])
+def remove_order(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
+    require_write(ctx, P)
+    delete_sales_order(db, ctx, get_scoped(db, SalesOrder, id, ctx.organization_id))
 
 
 @router.post("/orders/{id}/confirm", response_model=SalesOrderRead, tags=["Billing - Quotations & Sales Orders"])
@@ -226,6 +257,8 @@ def cancel_order(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = De
 def order_to_invoice(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
     require_write(ctx, P)
     order = get_scoped(db, SalesOrder, id, ctx.organization_id)
+    if status_key(db, order.status_id) != "confirmed":
+        raise HTTPException(status_code=409, detail="Complete the sales order before creating an invoice")
     invoice = create_invoice(db, ctx, order, order)
     set_status(db, order, ctx=ctx, module_key="billing", entity_key="sales_order", status_key="invoiced")
     return invoice
@@ -258,11 +291,7 @@ def invoice_items(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = D
 def update_invoice(id: uuid.UUID, body: InvoiceCreateBody, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
     require_write(ctx, P)
     current = get_scoped(db, SalesInvoice, id, ctx.organization_id)
-    if current.issued_at is not None or status_key(db, current.status_id) not in {None, "draft"}:
-        raise HTTPException(status_code=409, detail="Only draft invoices can be edited")
-    db.delete(current)
-    db.flush()
-    return create_invoice(db, ctx, body)
+    return update_sales_invoice(db, ctx, current, body)
 
 
 @router.post("/invoices/{id}/approve", response_model=SalesInvoiceRead, tags=["Billing - Invoices & Payments"])
@@ -287,19 +316,27 @@ def cancel_sales_invoice(id: uuid.UUID, db: Session = Depends(get_db), ctx: Cont
 def invoice_pdf(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
     invoice = get_scoped(db, SalesInvoice, id, ctx.organization_id)
     customer = db.get(Customer, invoice.customer_id)
-    lines = [f"Invoice {invoice.invoice_no}", f"Date {invoice.invoice_date}", f"Customer {customer.display_name if customer else ''}", ""]
-    for item in db.scalars(select(SalesInvoiceItem).where(SalesInvoiceItem.invoice_id == invoice.id)).all():
-        lines.append(f"{item.description}  {item.quantity} x {item.unit_price} = {item.line_total}")
-    lines.append("")
-    lines.append(f"Grand total {invoice.grand_total}")
-    lines.append(f"Balance due {invoice.balance_due}")
-    return RawResponse(build_pdf(lines), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{invoice.invoice_no}.pdf"'})
+    items = db.scalars(select(SalesInvoiceItem).where(SalesInvoiceItem.invoice_id == invoice.id)).all()
+    filename = invoice.invoice_no.replace('"', "")
+    return RawResponse(build_invoice_pdf(invoice, customer, items), media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{filename}.pdf"'})
 
 
 @router.get("/invoices/{id}/payments", tags=["Billing - Invoices & Payments"])
 def invoice_payments(id: uuid.UUID, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
     get_scoped(db, SalesInvoice, id, ctx.organization_id)
-    return db.scalars(select(InvoicePayment).where(InvoicePayment.organization_id == ctx.organization_id, InvoicePayment.invoice_id == id)).all()
+    links = db.scalars(select(InvoicePayment).where(InvoicePayment.organization_id == ctx.organization_id, InvoicePayment.invoice_id == id)).all()
+    history = []
+    for link in links:
+        payment = db.get(Payment, link.payment_id)
+        history.append({
+            "payment_id": link.payment_id,
+            "payment_no": payment.payment_no if payment else "",
+            "payment_date": payment.payment_date if payment else None,
+            "amount_applied": link.amount_applied,
+            "payment_status": payment.payment_status if payment else "",
+            "reference_no": payment.reference_no if payment else None,
+        })
+    return history
 
 
 @router.get("/invoices/{id}/outstanding", tags=["Billing - Invoices & Payments"])
@@ -312,7 +349,19 @@ def invoice_outstanding(id: uuid.UUID, db: Session = Depends(get_db), ctx: Conte
 @router.get("/payments", tags=["Billing - Invoices & Payments"])
 def list_payments(page: int = 1, page_size: int = 20, db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
     rows = db.scalars(select(Payment).where(Payment.organization_id == ctx.organization_id, Payment.payment_direction == "in").order_by(Payment.created_at.desc())).all()
-    return _page([PaymentRead.model_validate(row).model_dump() for row in rows], page, page_size)
+    payload = []
+    for row in rows:
+        data = PaymentRead.model_validate(row).model_dump(mode="json")
+        customer = db.get(Customer, row.customer_id) if row.customer_id else None
+        data["customer_name"] = customer.display_name if customer else ""
+        invoices = []
+        for link in db.scalars(select(InvoicePayment).where(InvoicePayment.organization_id == ctx.organization_id, InvoicePayment.payment_id == row.id)).all():
+            invoice = db.get(SalesInvoice, link.invoice_id)
+            if invoice:
+                invoices.append({"id": str(invoice.id), "invoice_no": invoice.invoice_no, "amount_applied": link.amount_applied})
+        data["invoices"] = invoices
+        payload.append(data)
+    return _page(payload, page, page_size)
 
 
 @router.post("/payments", response_model=PaymentRead, status_code=201, tags=["Billing - Invoices & Payments"])
@@ -353,7 +402,9 @@ def customer_outstanding(customer_id: uuid.UUID, db: Session = Depends(get_db), 
     get_scoped(db, Customer, customer_id, ctx.organization_id)
     total = db.scalar(
         select(func.coalesce(func.sum(SalesInvoice.balance_due), 0)).where(
-            SalesInvoice.organization_id == ctx.organization_id, SalesInvoice.customer_id == customer_id
+            SalesInvoice.organization_id == ctx.organization_id,
+            SalesInvoice.customer_id == customer_id,
+            not_cancelled(ctx.organization_id),
         )
     )
     return {"customer_id": customer_id, "outstanding": total}

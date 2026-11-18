@@ -109,6 +109,12 @@ export function BillingSettingsPage() {
           <h2 className="md:col-span-2 font-medium">GST configuration</h2>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={extras.gstEnabled} onChange={(event) => setExtras({ ...extras, gstEnabled: event.target.checked })} /> GST enabled</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={billing.tax_inclusive_pricing} onChange={(event) => setBilling({ ...billing, tax_inclusive_pricing: event.target.checked })} /> GST inclusive pricing</label>
+          <div className="md:col-span-2 grid gap-3 rounded-lg border border-line p-3 md:grid-cols-2">
+            <h3 className="md:col-span-2 text-sm font-medium">Invoice discount</h3>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={extras.discountEnabled} onChange={(event) => setExtras({ ...extras, discountEnabled: event.target.checked })} /> Show discount on invoices and quotations</label>
+            <Field label="Default discount (%)" type="number" min="0" max="100" step="0.01" value={extras.defaultDiscount} disabled={!extras.discountEnabled} onChange={(event) => setExtras({ ...extras, defaultDiscount: event.target.value })} />
+            <p className="md:col-span-2 text-xs text-muted">Choosing a product fills the line discount from this percent. Turn the option off to hide the discount column on the invoice and quotation.</p>
+          </div>
           <SelectField label="Default GST rate" value={extras.defaultRate} onChange={(event) => setExtras({ ...extras, defaultRate: event.target.value })}>
             {STANDARD_RATES.map((rate) => <option key={rate} value={rate}>{rate}%</option>)}
           </SelectField>

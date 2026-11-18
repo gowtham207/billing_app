@@ -81,13 +81,13 @@ export function Modal({ title, open, onClose, children, wide = false }: { title:
   )
 }
 
-export function ConfirmDialog({ open, title, message, onConfirm, onClose }: { open: boolean; title: string; message: string; onConfirm: () => void; onClose: () => void }) {
+export function ConfirmDialog({ open, title, message, onConfirm, onClose, confirmLabel = 'Confirm', dismissLabel = 'Cancel' }: { open: boolean; title: string; message: string; onConfirm: () => void; onClose: () => void; confirmLabel?: string; dismissLabel?: string }) {
   return (
     <Modal title={title} open={open} onClose={onClose}>
       <p className="text-sm text-muted">{message}</p>
       <div className="mt-4 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button variant="danger" onClick={onConfirm}>Confirm</Button>
+        <Button variant="secondary" onClick={onClose}>{dismissLabel}</Button>
+        <Button variant="danger" onClick={onConfirm}>{confirmLabel}</Button>
       </div>
     </Modal>
   )

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import Context, get_db, require_org
 from app.models import AuditLog, Customer, Lead, Payment, Product, SalesInvoice, StatusHistory
 from app.schemas.generated import PaymentRead, SalesInvoiceRead
-from app.services.reports import expense_rows, grouped_chart, low_stock, money_float, overview, profit_loss, purchase_rows, sales_rows, top_customers, top_products
+from app.services.reports import expense_rows, grouped_chart, low_stock, money_float, not_cancelled, overview, profit_loss, purchase_rows, sales_rows, top_customers, top_products
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -96,16 +96,17 @@ def recent_payments(db: Session = Depends(get_db), ctx: Context = Depends(requir
 
 @router.get("/outstanding-payments")
 def outstanding_payments(db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
-    total = db.scalar(select(func.coalesce(func.sum(SalesInvoice.balance_due), 0)).where(SalesInvoice.organization_id == ctx.organization_id))
+    kept = not_cancelled(ctx.organization_id)
+    total = db.scalar(select(func.coalesce(func.sum(SalesInvoice.balance_due), 0)).where(SalesInvoice.organization_id == ctx.organization_id, kept))
     count = db.scalar(
-        select(func.count()).select_from(SalesInvoice).where(SalesInvoice.organization_id == ctx.organization_id, SalesInvoice.balance_due > 0)
+        select(func.count()).select_from(SalesInvoice).where(SalesInvoice.organization_id == ctx.organization_id, SalesInvoice.balance_due > 0, kept)
     ) or 0
     return {"count": count, "outstanding": money_float(total)}
 
 
 @router.get("/sales-chart")
 def sales_chart(db: Session = Depends(get_db), ctx: Context = Depends(require_org)):
-    return grouped_chart(db, SalesInvoice, SalesInvoice.grand_total, SalesInvoice.invoice_date, ctx.organization_id)
+    return grouped_chart(db, SalesInvoice, SalesInvoice.grand_total, SalesInvoice.invoice_date, ctx.organization_id, extra=not_cancelled(ctx.organization_id))
 
 
 @router.get("/purchase-chart")

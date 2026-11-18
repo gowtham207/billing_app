@@ -133,6 +133,7 @@ class SalesOrderCreateRequest(BaseModel):
     order_no: str | None = None
     order_date: date | None = None
     currency: str = "INR"
+    notes: str | None = None
     items: list[SaleLine] = Field(min_length=1)
 
 
@@ -147,6 +148,7 @@ class InvoiceCreateBody(BaseModel):
     shipping_amount: Decimal = Field(default=0, ge=0)
     notes: str | None = None
     billing_snapshot: dict | None = None  # from, to, and bill_to are stored independently
+    reopen: bool = False  # return a posted invoice to draft instead of keeping it issued
     items: list[SaleLine] = Field(min_length=1)
 
 

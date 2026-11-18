@@ -274,6 +274,7 @@ export type BillingSnapshot = {
   reference_no?: string
   payment_terms?: string
   treatment?: 'intra' | 'inter' | 'exempt'
+  show_discount?: boolean
   lines?: GstLine[]
   upi_id?: string
   merchant_name?: string
@@ -282,12 +283,14 @@ export type BillingSnapshot = {
 export type Payment = {
   id: string
   customer_id: string | null
+  customer_name?: string
   payment_no: string
   payment_date: string
   amount: string
   payment_status: string
   reference_no: string | null
   notes: string | null
+  invoices?: { id: string; invoice_no: string; amount_applied: string }[]
 }
 
 export type Role = {
